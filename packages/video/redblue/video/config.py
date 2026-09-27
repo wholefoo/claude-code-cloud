@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -20,6 +21,8 @@ class VideoSettings(BaseSettings):
     width: int = 1080
     height: int = 1920
     voice_id: str = "21m00Tcm4TlvDq8ikWAM"  # ElevenLabs default voice; override per brand
+    captions: Literal["whisper", "even"] = "whisper"  # whisper falls back to even if absent
+    whisper_model: str = "base.en"  # faster-whisper model (tiny.en … large-v3)
     subreddits: list[str] = Field(default_factory=list)  # e.g. ["technology", "gadgets"]
     reddit_user_agent: str = "redblue-video/0.1 (trend research; self-hosted)"
     google_trends_geo: str = ""  # defaults to `region`
