@@ -3,13 +3,18 @@
 Scores are 0–100 with a breakdown so humans can see *why* a trend ranks where it does.
 Reach is views (YouTube), searches (Google Trends) or an estimate from votes and comments
 (Reddit), so different sources rank on one scale. Relevance also gates the total, keeping
-viral but off-niche items below on-niche ones."""
+viral but off-niche items below on-niche ones.
+
+With enough published videos, :class:`Feedback` (built from your own results in
+``performance.py``) nudges scores by ×0.8–1.25 for sources and topic words that have done
+better or worse than your median. The nudge shows in the breakdown as ``track_record``."""
 
 from __future__ import annotations
 
 import math
 import re
 from collections import Counter
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from redblue.video.schemas import TrendSignal
@@ -84,14 +89,50 @@ def opportunity(sig: TrendSignal, crowd: Counter) -> float:
     return 1 / (1 + max(0.0, overlap - 1) / 3)
 
 
+TRACK_RECORD_LIMIT = 0.32  # log2 bound: multiplier stays within ×0.8 … ×1.25
+
+
+@dataclass
+class Feedback:
+    """Learned effects (log2 of performance vs. your median, shrunk toward 0)."""
+
+    sources: dict[str, float] = field(default_factory=dict)
+    words: dict[str, float] = field(default_factory=dict)
+
+    def __bool__(self) -> bool:
+        return bool(self.sources or self.words)
+
+    def effect(self, sig: TrendSignal) -> float:
+        e = self.sources.get(sig.source, 0.0)
+        hits = [self.words[t] for t in tokens(sig.title) if t in self.words]
+        if hits:
+            e += sum(hits) / len(hits)
+        return max(-TRACK_RECORD_LIMIT, min(TRACK_RECORD_LIMIT, e))
+
+    def multiplier(self, sig: TrendSignal) -> float:
+        return 2 ** self.effect(sig)
+
+
+def weights(overrides: dict[str, float] | None = None) -> dict[str, float]:
+    """Default weights with overrides applied, normalized to sum to 1."""
+    w = {**WEIGHTS, **{k: float(v) for k, v in (overrides or {}).items() if k in WEIGHTS}}
+    if any(v < 0 for v in w.values()) or sum(w.values()) <= 0:
+        raise ValueError("Score weights must be non-negative and not all zero.")
+    total = sum(w.values())
+    return {k: v / total for k, v in w.items()}
+
+
 def score_all(
     signals: list[TrendSignal],
     niche: str,
     keywords: list[str] | None = None,
     now: datetime | None = None,
+    feedback: Feedback | None = None,
+    weight_overrides: dict[str, float] | None = None,
 ) -> list[tuple[TrendSignal, float, dict]]:
     now = now or datetime.now(UTC)
     keywords = keywords or []
+    w = weights(weight_overrides)
     crowd = Counter(t for s in signals for t in tokens(s.title))
     out = []
     for s in signals:
@@ -103,7 +144,10 @@ def score_all(
         }
         # Relevance also gates the whole score: an off-niche item, however viral, reaches at
         # most 40% of the score an equally strong on-niche item would get.
-        base = sum(WEIGHTS[k] * v for k, v in parts.items())
-        total = round(100 * base * (0.4 + 0.6 * parts["relevance"]), 1)
-        out.append((s, total, {k: round(v, 3) for k, v in parts.items()}))
+        base = sum(w[k] * v for k, v in parts.items())
+        total = 100 * base * (0.4 + 0.6 * parts["relevance"])
+        if feedback:
+            parts["track_record"] = feedback.multiplier(s)
+            total = min(100.0, total * parts["track_record"])
+        out.append((s, round(total, 1), {k: round(v, 3) for k, v in parts.items()}))
     return sorted(out, key=lambda x: -x[1])

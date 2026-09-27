@@ -5,11 +5,11 @@ sources, script an original short, render it with licensed footage and AI narrat
 it to a human for review. **Nothing is published automatically.**
 
 ```
-sweep ──► score ──► brief ──► script ──► assets ──► render ──► review ──► (you upload)
-YouTube    velocity  Tavily     Claude     Pexels     FFmpeg     admin
-Tavily     freshness Firecrawl  (cited)    ElevenLabs + captions approval
-Reddit     relevance
-Google     opportunity
+sweep ──► score ──► brief ──► script ──► assets ──► render ──► review ──► (you upload) ──► track
+YouTube    velocity  Tavily     Claude     Pexels     FFmpeg     admin                     YouTube APIs
+Tavily     freshness Firecrawl  (cited)    ElevenLabs + captions approval                  CSV / by hand
+Reddit     relevance                                                                            │
+Google     opportunity ◄──────────────── track record (what worked for you) ◄────────────────────┘
 Trends
 ```
 
@@ -41,11 +41,14 @@ That's useful for testing, and you add keys as you go.
 | `PEXELS_API_KEY` | Licensed stock footage per beat | Brand-colour backgrounds |
 | `ELEVENLABS_API_KEY` | AI narration | Silent video with captions |
 | `ANTHROPIC_API_KEY` | Brief and script writing (structured, cited) | Deterministic templates |
+| `YOUTUBE_OAUTH_CLIENT_ID` + `YOUTUBE_OAUTH_CLIENT_SECRET` + `YOUTUBE_OAUTH_REFRESH_TOKEN` | Retention and shares for your uploads (YouTube Analytics, read-only) | Public view/like/comment counts only |
 
 Settings (`RB_VIDEO_*`): `NICHE`, `KEYWORDS` (JSON list), `REGION`, `SUBREDDITS` (JSON list),
 `GOOGLE_TRENDS_GEO`, `REDDIT_USER_AGENT`, `OUTPUT_DIR`, `TARGET_SECONDS`, `TEMPLATE`
 (default `bold`), `FORMATS` (JSON list, default `["9:16"]`), `VOICE_ID`, `CAPTIONS`
-(`whisper` or `even`), `WHISPER_MODEL`.
+(`whisper` or `even`), `WHISPER_MODEL`, `PERF_WINDOW_HOURS` (default 72), `TRACK_DAYS`
+(default 30), `LEARN_FROM_PERFORMANCE` (default true), `LEARN_MIN_VIDEOS` (default 5),
+`SCORE_WEIGHTS` (JSON object, e.g. `{"velocity": 0.2, "relevance": 0.45}`).
 
 ### How sources are compared
 
@@ -60,6 +63,8 @@ about something else (say, football scores) ranks below a smaller trend in your 
   official APIs (titles and counts); Google Trends through its public feed. Firecrawl
   refuses video-platform URLs, and clip downloads are limited to Pexels
   hosts. Scripts are original; transcripts and other creators' videos are never reused.
+- **Read-only analytics.** Performance tracking reads your own videos' numbers; the YouTube
+  Analytics token is read-only, and nothing is ever posted.
 - **Cited facts.** Brief facts must cite a fetched source. A script beat that states a
   number without a source, or cites a missing one, blocks rendering until a human fixes it.
 - **Untrusted input.** Scraped pages are fenced before they reach the model, so text like
@@ -121,7 +126,45 @@ A 45-second video renders in well under a minute on a small VPS (Whisper adds a 
 per beat on CPU with `base.en`). For richer motion graphics, swap in Remotion later:
 `render.render()` is the only function to replace.
 
-## Next steps (not in the MVP)
+## Performance tracking
 
-Performance tracking from platform analytics to tune
-scoring, and optional direct upload after approval.
+After you upload an approved video yourself, record where: on the project page
+(**Published** panel) or with `redblue video publish PROJECT_ID URL -f 9:16`. A video can be
+recorded on several platforms, one entry per URL.
+
+| Platform | How numbers arrive |
+|---|---|
+| YouTube | Fetched every 6 hours (and with `redblue video track` or **Fetch YouTube stats now**): views, likes and comments via `YOUTUBE_API_KEY`; with the optional OAuth settings, also shares and retention (average % viewed) from YouTube Analytics |
+| TikTok, Instagram, Facebook, LinkedIn, X, other | Type them in on the project page, or import a CSV (admin **Performance** page or `redblue video import-stats file.csv`) |
+
+The CSV needs `url` and `views` columns; `likes`, `comments`, `shares`, `avg_view_pct` and
+`date` are optional, and common export headers ("Video views", "Average percentage viewed")
+are recognized. Rows are matched to recorded publications by URL.
+
+**Comparing fairly.** Each video is measured by its views at the same age (72 hours by
+default, interpolated between snapshots) and compared with your median on the same
+platform. That ratio is its *lift* (×2.0 means twice your usual). The **Performance** page
+and `redblue video performance` show every video's lift and engagement, plus lift by trend
+source, topic word, template and format.
+
+**Tuning scoring.** Once 5 videos have mature numbers, each sweep multiplies a trend's score
+by its *track record*: the learned effect of its source and topic words, bounded to
+×0.8–1.25, and shown in the trend's breakdown. Effects are averaged in log space and shrunk
+toward zero, and a source or word needs two videos before it counts, so one viral hit
+doesn't take over. The page also shows how well each scoring signal (velocity, freshness,
+relevance, opportunity) predicted your results; adjust `RB_VIDEO_SCORE_WEIGHTS` if one isn't
+helping. Turn learning off with `RB_VIDEO_LEARN_FROM_PERFORMANCE=false`.
+
+**Getting a YouTube Analytics refresh token (optional).** In Google Cloud, enable the
+YouTube Analytics API and create an OAuth client (Desktop app). Authorize the channel owner
+account once with the `https://www.googleapis.com/auth/yt-analytics.readonly` scope, for
+example with the [OAuth 2.0 Playground](https://developers.google.com/oauthplayground)
+using your own client, and keep the refresh token in your environment or secret manager.
+The scope is read-only. Analytics data lags two to three days, so public counts are used
+for views when they're higher.
+
+Only your own published videos are read. Nothing is posted, liked or commented.
+
+## Next steps
+
+Optional direct upload after approval (it would still need a human to press the button).

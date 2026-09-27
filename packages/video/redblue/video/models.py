@@ -45,3 +45,40 @@ class VideoProject(Base, TimestampMixin):
     review_note: Mapped[str] = mapped_column(Text, default="")
     reviewed_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
     ai_generated: Mapped[bool] = mapped_column(default=True)
+
+
+class Publication(Base):
+    """Where a human uploaded a rendered video. RedBlue never posts; people record it here
+    so performance can be tracked and fed back into trend scoring."""
+
+    __tablename__ = "rb_video_publications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("rb_video_projects.id", ondelete="CASCADE"), index=True
+    )
+    platform: Mapped[str] = mapped_column(String(20), index=True)  # youtube, tiktok, ...
+    url: Mapped[str] = mapped_column(String(1000), unique=True)
+    external_id: Mapped[str | None] = mapped_column(String(100), nullable=True)  # YouTube id
+    format: Mapped[str | None] = mapped_column(String(10), nullable=True)  # "9:16"
+    published_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class MetricSnapshot(Base):
+    """Counts for a publication at one point in time (API fetch, CSV import or typed in)."""
+
+    __tablename__ = "rb_video_metrics"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    publication_id: Mapped[int] = mapped_column(
+        ForeignKey("rb_video_publications.id", ondelete="CASCADE"), index=True
+    )
+    taken_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    source: Mapped[str] = mapped_column(String(20))  # youtube_api / youtube_analytics / csv
+    views: Mapped[int] = mapped_column(Integer, default=0)
+    likes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    comments: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    shares: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    avg_view_pct: Mapped[float | None] = mapped_column(Float, nullable=True)  # retention 0–100
+    avg_view_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)

@@ -40,3 +40,4 @@ select,.rb-admin input,.rb-admin textarea{font:inherit;padding:.4rem .5rem;borde
 .rb-renders{display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-start}
 .rb-renders figure{margin:0}
 .rb-renders video{background:#000;border-radius:8px;max-width:100%}
+.rb-pub{border-top:1px solid var(--rb-border,#ddd);padding-top:.5rem;margin-top:.5rem;overflow-wrap:anywhere}

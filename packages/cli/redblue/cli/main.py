@@ -369,5 +369,79 @@ def video_make(
         typer.echo(f"Review at {pipe.platform.settings.base_url}/admin/video/projects/{p.id}")
 
 
+@video_app.command("publish")
+def video_publish(
+    project: int = typer.Argument(..., help="Project id (must be approved)"),
+    url: str = typer.Argument(..., help="Where you uploaded it"),
+    platform: str = typer.Option("", help="youtube, tiktok, instagram, ... (default: detect)"),
+    fmt: str = typer.Option("", "--format", "-f", help="Which render: 9:16, 4:5, 1:1, 16:9"),
+):
+    """Record where you published a video, so its performance can be tracked."""
+    from redblue.video import performance
+    from redblue.video.models import VideoProject
+
+    pipe = _video()
+    with pipe.platform.db.session() as s:
+        p = s.get(VideoProject, project)
+        if p is None:
+            raise typer.BadParameter(f"No project #{project}")
+        try:
+            pub = performance.record(s, p, url, platform=platform or None, format=fmt or None)
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from None
+        typer.echo(f"Recorded #{pub.id} on {pub.platform}: {pub.url}")
+
+
+@video_app.command("track")
+def video_track():
+    """Fetch stats for published YouTube videos (read-only)."""
+    pipe = _video()
+    with pipe.platform.db.session() as s:
+        res = pipe.track(s)
+    for n in res.notes:
+        typer.secho(n, fg="yellow")
+    typer.echo(f"Updated {res.updated} video(s).")
+
+
+@video_app.command("import-stats")
+def video_import_stats(path: Path = typer.Argument(..., exists=True, dir_okay=False)):
+    """Import numbers from a CSV (url, views, likes, comments, shares, avg_view_pct, date)."""
+    from redblue.video import performance
+
+    pipe = _video()
+    with pipe.platform.db.session() as s:
+        n, errors = performance.import_csv(s, path.read_text(encoding="utf-8-sig"))
+    for e in errors:
+        typer.secho(f"  {e}", fg="yellow")
+    typer.echo(f"Imported {n} row(s).")
+
+
+@video_app.command("performance")
+def video_performance():
+    """How published videos did, and what the next sweep will learn from it."""
+    from redblue.video import performance
+
+    pipe = _video()
+    with pipe.platform.db.session() as s:
+        r = performance.report(s, pipe.s)
+        typer.secho(f"Published videos (views at {r.window_hours} h vs. your median)", bold=True)
+        for row in r.rows:
+            views = row.latest.views if row.latest else 0
+            window = f"{row.window_views:,.0f}" if row.window_views is not None else "too early"
+            lift = f"x{row.lift:.2f}" if row.lift is not None else "-"
+            typer.echo(
+                f"  #{row.project.id:<4} {row.pub.platform:9} {views:>10,} views  "
+                f"@{r.window_hours}h {window:>10}  {lift:>6}  {row.project.topic[:50]}"
+            )
+        state = "on" if r.active else f"off (needs {r.min_videos} mature videos)"
+        typer.secho(f"Scoring feedback: {state}", bold=True)
+        for feature in ("source", "word", "template", "format"):
+            groups = r.groups.get(feature, [])
+            if feature == "word":
+                groups = [g for g in groups if g.n >= 2]  # words seen once aren't used
+            for g in groups[:8]:
+                typer.echo(f"  {feature:8} {g.value:20} n={g.n:<3} x{g.multiplier:.2f}")
+
+
 if __name__ == "__main__":
     app()
