@@ -254,10 +254,12 @@ tracking job, which only reads status.
    ```bash
    curl -s https://open.tiktokapis.com/v2/oauth/token/ \
      -d client_key=KEY -d client_secret=SECRET -d grant_type=authorization_code \
-     -d redirect_uri=URI --data-urlencode code=CODE
+     --data-urlencode redirect_uri=URI -d "code=CODE_AS_COPIED"
    ```
 
-   Keep the `refresh_token` it returns (valid for a year).
+   Paste the code exactly as it appears in the address bar: it's already URL-encoded.
+   Codes expire within minutes. Keep the `refresh_token` it returns (valid for a year).
+   If your TikTok app is still in sandbox, add your account as a target user first.
 4. Set the credentials:
 
    ```bash
