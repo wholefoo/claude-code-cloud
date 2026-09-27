@@ -47,6 +47,17 @@ def _run(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
     return proc
 
 
+def poster_frame(video: Path, out: Path, at: float = 1.0) -> Path:
+    """A JPEG still from the video (Reddit needs a poster image for video posts)."""
+    try:
+        _run(
+            ["-ss", str(at), "-i", str(video), "-frames:v", "1", "-q:v", "3", str(out)], out.parent
+        )
+    except RenderError:  # very short videos: take the first frame
+        _run(["-i", str(video), "-frames:v", "1", "-q:v", "3", str(out)], out.parent)
+    return out
+
+
 def media_duration(path: Path) -> float | None:
     proc = subprocess.run(  # noqa: S603 - fixed binary, argv list, no shell
         [ffmpeg_exe(), "-hide_banner", "-i", str(path)],

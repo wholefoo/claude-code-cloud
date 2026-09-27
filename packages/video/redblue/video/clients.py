@@ -936,6 +936,247 @@ class Pinterest:
         return pin_id
 
 
+class RedditPoster:
+    """Reddit video posts with a user's refresh token (scopes ``submit``, ``identity``,
+    ``read``). Video posts go through Reddit's media-asset upload (the flow PRAW uses), then
+    ``/api/submit`` on a person's click. Reddit answers video submissions asynchronously, so
+    the post's link is found afterwards in the account's submitted list."""
+
+    TOKEN_URL = "https://www.reddit.com/api/v1/access_token"  # noqa: S105  # nosec B105
+    API = "https://oauth.reddit.com"
+    SUBREDDIT = re.compile(r"[A-Za-z0-9_]{2,21}")
+
+    def __init__(
+        self,
+        credentials: tuple[str, str] | None,
+        refresh_token: str | None,
+        username: str | None,
+        user_agent: str,
+        client: httpx.Client | None = None,
+    ):
+        if not (credentials and refresh_token and username):
+            raise MissingKey(
+                "Set REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_POST_REFRESH_TOKEN and "
+                "REDDIT_USERNAME to post on Reddit."
+            )
+        if not re.fullmatch(r"[A-Za-z0-9_-]{3,20}", username):
+            raise ValueError("REDDIT_USERNAME looks like a Reddit username, without u/.")
+        self.credentials, self.refresh_token, self.username = credentials, refresh_token, username
+        self.http, self.headers = _client(client), {"User-Agent": user_agent}
+        self._token: str | None = None
+
+    def _auth(self) -> dict:
+        if self._token is None:
+            r = self.http.post(
+                self.TOKEN_URL,
+                auth=self.credentials,
+                headers=self.headers,
+                data={"grant_type": "refresh_token", "refresh_token": self.refresh_token},
+            )
+            body = r.json() if r.content else {}
+            if r.status_code >= 400 or "access_token" not in body:
+                raise PlatformError(f"Reddit login failed: {body.get('error') or r.status_code}")
+            self._token = body["access_token"]
+        return {**self.headers, "Authorization": f"Bearer {self._token}"}
+
+    def upload_asset(self, path, mimetype: str) -> str:
+        r = self.http.post(
+            f"{self.API}/api/media/asset.json",
+            headers=self._auth(),
+            data={"filepath": path.name, "mimetype": mimetype},
+        )
+        if r.status_code >= 400:
+            raise PlatformError(f"Reddit: media upload refused ({r.status_code}).")
+        lease = (r.json() or {}).get("args") or {}
+        action = str(lease.get("action", ""))
+        url = _https_host(
+            "https:" + action if action.startswith("//") else action,
+            ("amazonaws.com", "reddit.com", "redd.it", "redditmedia.com"),
+        )
+        fields = {str(f["name"]): str(f["value"]) for f in lease.get("fields", [])}
+        if "key" not in fields:
+            raise PlatformError("Reddit didn't return an upload key.")
+        r = self.http.post(  # pre-signed storage upload: its own fields, no Reddit token
+            url,
+            headers=self.headers,
+            data=fields,
+            files={"file": (path.name, path.read_bytes(), mimetype)},
+            timeout=httpx.Timeout(600.0, connect=10.0),
+        )
+        if r.status_code >= 400:
+            raise PlatformError(f"Reddit media upload failed ({r.status_code}).")
+        return f"{url.rstrip('/')}/{fields['key']}"
+
+    def submit_video(
+        self, *, subreddit: str, title: str, video_url: str, poster_url: str, nsfw: bool
+    ) -> None:
+        if not self.SUBREDDIT.fullmatch(subreddit):
+            raise ValueError("Enter a subreddit name like technology (without r/).")
+        r = self.http.post(
+            f"{self.API}/api/submit",
+            headers=self._auth(),
+            data={
+                "sr": subreddit,
+                "title": title,
+                "kind": "video",
+                "url": video_url,
+                "video_poster_url": poster_url,
+                "api_type": "json",
+                "nsfw": "true" if nsfw else "false",
+                "spoiler": "false",
+                "sendreplies": "true",
+                "resubmit": "true",
+            },
+        )
+        body = (r.json() if r.content else {}).get("json") or {}
+        errors = body.get("errors") or []
+        if r.status_code >= 400 or errors:
+            detail = "; ".join(" ".join(str(x) for x in e[:2]) for e in errors) or r.status_code
+            raise PlatformError(f"Reddit: {detail}")
+
+    def find_post(self, subreddit: str, title: str, since: float) -> str | None:
+        r = self.http.get(
+            f"{self.API}/user/{self.username}/submitted",
+            headers=self._auth(),
+            params={"limit": 25, "sort": "new", "raw_json": 1},
+        )
+        if r.status_code >= 400:
+            raise PlatformError(f"Reddit: couldn't read your posts ({r.status_code}).")
+        for child in (r.json().get("data") or {}).get("children", []):
+            d = child.get("data") or {}
+            if (
+                str(d.get("subreddit", "")).lower() == subreddit.lower()
+                and d.get("title") == title
+                and float(d.get("created_utc") or 0) >= since - 120
+                and str(d.get("permalink", "")).startswith("/r/")
+            ):
+                return "https://www.reddit.com" + d["permalink"]
+        return None
+
+
+class Bluesky:
+    """Bluesky (AT Protocol): log in with an app password, upload the video to Bluesky's
+    video service, then (on a person's click) create a post embedding the processed blob."""
+
+    VIDEO = "https://video.bsky.app"
+
+    def __init__(
+        self,
+        credentials: tuple[str, str] | None,
+        pds: str = "https://bsky.social",
+        client: httpx.Client | None = None,
+    ):
+        if not credentials:
+            raise MissingKey("Set BLUESKY_HANDLE and BLUESKY_APP_PASSWORD to post on Bluesky.")
+        self.handle, self.password = credentials
+        self.pds = _https_host(pds.rstrip("/"), (urlsplit(pds).hostname or "x",))
+        self.http = _client(client)
+        self._session: dict | None = None
+
+    def _json(self, r: httpx.Response) -> dict:
+        body = r.json() if r.content else {}
+        if r.status_code >= 400:
+            raise PlatformError(
+                f"Bluesky: {body.get('message') or body.get('error') or r.status_code}"
+            )
+        return body
+
+    def session(self) -> dict:
+        if self._session is None:
+            r = self.http.post(
+                f"{self.pds}/xrpc/com.atproto.server.createSession",
+                json={"identifier": self.handle, "password": self.password},
+            )
+            self._session = self._json(r)
+        return self._session
+
+    def _pds_host(self) -> str:
+        """The account's own PDS (bsky.social accounts live on a host.bsky.network PDS)."""
+        for svc in (self.session().get("didDoc") or {}).get("service", []):
+            if svc.get("id", "").endswith("#atproto_pds"):
+                return urlsplit(svc.get("serviceEndpoint", "")).hostname or ""
+        return urlsplit(self.pds).hostname or ""
+
+    def upload_video(self, path) -> str:
+        """Returns the processing job id."""
+        sess = self.session()
+        r = self.http.get(
+            f"{self.pds}/xrpc/com.atproto.server.getServiceAuth",
+            headers={"Authorization": f"Bearer {sess['accessJwt']}"},
+            params={
+                "aud": f"did:web:{self._pds_host()}",
+                "lxm": "com.atproto.repo.uploadBlob",
+                "exp": int(datetime.now(UTC).timestamp()) + 1800,
+            },
+        )
+        token = self._json(r)["token"]
+        r = self.http.post(
+            f"{self.VIDEO}/xrpc/app.bsky.video.uploadVideo",
+            params={"did": sess["did"], "name": path.name},
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "video/mp4"},
+            content=path.read_bytes(),
+            timeout=httpx.Timeout(600.0, connect=10.0),
+        )
+        body = r.json() if r.content else {}
+        job = body.get("jobStatus") or body  # 409 "already_exists" still carries the job
+        if r.status_code >= 400 and not job.get("jobId"):
+            raise PlatformError(f"Bluesky: {body.get('message') or r.status_code}")
+        if not job.get("jobId"):
+            raise PlatformError("Bluesky didn't return a video job.")
+        return str(job["jobId"])
+
+    def job_status(self, job_id: str) -> dict:
+        r = self.http.get(
+            f"{self.VIDEO}/xrpc/app.bsky.video.getJobStatus", params={"jobId": job_id}
+        )
+        return self._json(r).get("jobStatus") or {}
+
+    def post(self, *, text: str, blob: dict, width: int, height: int) -> str:
+        sess = self.session()
+        record = {
+            "$type": "app.bsky.feed.post",
+            "text": text,
+            "createdAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            "embed": {
+                "$type": "app.bsky.embed.video",
+                "video": blob,
+                "aspectRatio": {"width": width, "height": height},
+            },
+        }
+        facets = hashtag_facets(text)
+        if facets:
+            record["facets"] = facets
+        r = self.http.post(
+            f"{self.pds}/xrpc/com.atproto.repo.createRecord",
+            headers={"Authorization": f"Bearer {sess['accessJwt']}"},
+            json={"repo": sess["did"], "collection": "app.bsky.feed.post", "record": record},
+        )
+        uri = str(self._json(r).get("uri", ""))
+        m = re.fullmatch(
+            r"at://(did:[a-z]+:[A-Za-z0-9._:%-]+)/app\.bsky\.feed\.post/([A-Za-z0-9]+)", uri
+        )
+        if not m:
+            raise PlatformError("Bluesky didn't return the post id.")
+        return m.group(2)
+
+
+def hashtag_facets(text: str) -> list[dict]:
+    """Rich-text facets so #tags are clickable (offsets are UTF-8 bytes)."""
+    facets = []
+    for m in re.finditer(r"(?:^|\s)(#([^\s#]{1,64}))", text):
+        tag = m.group(2).rstrip(".,!?;:")
+        if not tag or tag.isdigit():
+            continue
+        start = len(text[: m.start(1)].encode())
+        facets.append(
+            {
+                "index": {"byteStart": start, "byteEnd": start + len(("#" + tag).encode())},
+                "features": [{"$type": "app.bsky.richtext.facet#tag", "tag": tag}],
+            }
+        )
+    return facets
+
+
 def _int(value) -> int | None:
     try:
         return int(value) if value is not None and value != "" else None

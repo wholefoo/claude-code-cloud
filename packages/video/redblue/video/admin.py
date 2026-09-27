@@ -419,8 +419,11 @@ def publish_upload(
     user: Writer,
     confirm: Annotated[str, Form()] = "",
     visibility: Annotated[str, Form()] = "",
+    subreddit: Annotated[str, Form()] = "",
+    title: Annotated[str, Form()] = "",
+    nsfw: Annotated[str, Form()] = "",
 ):
-    """Step 2 (Instagram, LinkedIn): a person makes it public."""
+    """Step 2 (upload-then-post platforms): a person makes it public."""
     need(user, Role.editor)
     up = _upload(db, uid)
     dest = f"/admin/video/projects/{up.project_id}"
@@ -432,6 +435,9 @@ def publish_upload(
             confirmed_by=user.email,
             confirmed=_flag(confirm),
             visibility=visibility or None,
+            subreddit=subreddit,
+            title=title,
+            nsfw=_flag(nsfw),
         )
     except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
         return back(dest, f"Publish failed: {exc}"[:300])
@@ -465,6 +471,56 @@ def upload_x(
     except httpx.HTTPError as exc:
         return back(dest, f"X upload failed: {exc}"[:300])
     return back(dest, "Uploaded to X (not posted yet). When it's processed, press Post below.")
+
+
+@router.post("/projects/{pid:int}/reddit")
+def upload_reddit(
+    pid: int,
+    db: DB,
+    user: Writer,
+    format: Annotated[str, Form()] = "9:16",
+    confirm: Annotated[str, Form()] = "",
+):
+    need(user, Role.editor)
+    p = _project(db, pid)
+    dest = f"/admin/video/projects/{pid}"
+    try:
+        social.upload_reddit(
+            db, p, format, get_video_settings(), confirmed_by=user.email, confirmed=_flag(confirm)
+        )
+    except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
+        return back(dest, f"Reddit upload failed: {exc}"[:300])
+    except httpx.HTTPError as exc:
+        return back(dest, f"Reddit upload failed: {exc}"[:300])
+    return back(dest, "Uploaded to Reddit (not posted yet). Choose a subreddit below to post it.")
+
+
+@router.post("/projects/{pid:int}/bluesky")
+def upload_bluesky(
+    pid: int,
+    db: DB,
+    user: Writer,
+    format: Annotated[str, Form()] = "9:16",
+    text: Annotated[str, Form()] = "",
+    confirm: Annotated[str, Form()] = "",
+):
+    need(user, Role.editor)
+    p = _project(db, pid)
+    dest = f"/admin/video/projects/{pid}"
+    try:
+        req = social.BlueskyRequest(format=format, text=text)
+        social.upload_bluesky(
+            db, p, req, get_video_settings(), confirmed_by=user.email, confirmed=_flag(confirm)
+        )
+    except ValidationError as exc:
+        return back(dest, f"Check the Bluesky form: {exc.errors()[0]['msg']}"[:300])
+    except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
+        return back(dest, f"Bluesky upload failed: {exc}"[:300])
+    except httpx.HTTPError as exc:
+        return back(dest, f"Bluesky upload failed: {exc}"[:300])
+    return back(
+        dest, "Uploaded to Bluesky (not posted yet). When it's processed, press Post below."
+    )
 
 
 @router.post("/projects/{pid:int}/pinterest")
