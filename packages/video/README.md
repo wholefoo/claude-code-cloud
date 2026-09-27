@@ -162,13 +162,22 @@ doesn't take over. The page also shows how well each scoring signal (velocity, f
 relevance, opportunity) predicted your results; adjust `RB_VIDEO_SCORE_WEIGHTS` if one isn't
 helping. Turn learning off with `RB_VIDEO_LEARN_FROM_PERFORMANCE=false`.
 
-**Getting a YouTube Analytics refresh token (optional).** In Google Cloud, enable the
-YouTube Analytics API and create an OAuth client (Desktop app). Authorize the channel owner
-account once with the `https://www.googleapis.com/auth/yt-analytics.readonly` scope, for
-example with the [OAuth 2.0 Playground](https://developers.google.com/oauthplayground)
-using your own client, and keep the refresh token in your environment or secret manager.
-The scope is read-only. Analytics data lags two to three days, so public counts are used
-for views when they're higher.
+**Getting a YouTube Analytics refresh token (optional).**
+
+1. In Google Cloud, enable the YouTube Analytics API. On the OAuth consent screen, add the
+   channel owner's Google account as a test user.
+2. Create an OAuth client of type **Web application** with the authorized redirect URI
+   `https://developers.google.com/oauthplayground`.
+3. In the [OAuth 2.0 Playground](https://developers.google.com/oauthplayground), open the
+   settings (gear icon), tick "Use your own OAuth credentials" and enter your client's id
+   and secret.
+4. Authorize the scope `https://www.googleapis.com/auth/yt-analytics.readonly` as the channel
+   owner, choosing the brand channel if you have one. Then exchange the code for tokens and
+   keep the refresh token in your environment or secret manager.
+
+While the consent screen's publishing status is "Testing", Google expires refresh tokens
+after 7 days; publish the consent screen to keep them. The scope is read-only. Analytics
+data lags two to three days, so public counts are used for views when they're higher.
 
 Only your own published videos are read. Nothing is posted, liked or commented.
 
