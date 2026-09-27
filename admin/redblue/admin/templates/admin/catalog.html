@@ -1,0 +1,12 @@
+{% extends "admin/base.html" %}
+{% block title %}Template library{% endblock %}
+{% block main %}
+<h1>Template library</h1>
+<p class="rb-muted">Every page type is server-rendered, accessible, ships schema.org JSON-LD, is covered by the security gate, and has a Core Web Vitals budget. Pages use a page type via their collection, or <code>{"page_type": "…"}</code> in a page's fields.</p>
+{% for key, label in categories.items() %}
+<section><h2>{{ label }}</h2>
+<table class="rb-table"><thead><tr><th scope="col">Page type</th><th scope="col">Key</th><th scope="col">Schema</th><th scope="col">Fed by</th><th scope="col">Template</th></tr></thead><tbody>
+{% for pt in groups[key] %}<tr><td>{{ pt.name }}</td><td><code>{{ pt.key }}</code></td><td>{{ pt.schema_type }}</td><td>{{ (collections[pt.collection].label if pt.collection else "") or ("lists " ~ collections[pt.listing_of].label if pt.listing_of else "built-in") }}</td><td><code>{{ pt.template }}</code></td></tr>{% endfor %}
+</tbody></table></section>
+{% endfor %}
+{% endblock %}

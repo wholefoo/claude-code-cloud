@@ -1,0 +1,9 @@
+<footer class="rb-footer">
+  <div class="rb-container">
+    {% if not ((page.blocks or []) | selectattr("type", "equalto", "form") | list) and page_type.key not in ("not_found", "maintenance") %}{% include "partials/form_newsletter_inline.html" ignore missing %}{% endif %}
+    <nav aria-label="Footer"><ul class="rb-footer__links">
+      {% for item in site.footer_links %}<li><a href="{{ item.path }}">{{ item.label }}</a></li>{% endfor %}
+    </ul></nav>
+    <p class="rb-muted">© {{ site.year }} {{ site.organization_name or site.site_name }}</p>
+  </div>
+</footer>

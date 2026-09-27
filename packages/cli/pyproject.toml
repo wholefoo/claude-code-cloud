@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "redblue-cli"
+version = "0.1.0"
+description = "RedBlue command-line interface"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+dependencies = ["typer>=0.12", "uvicorn>=0.30", "redblue-platform", "redblue-gate", "redblue-builder"]
+
+[project.scripts]
+redblue = "redblue.cli.main:app"
+
+[tool.setuptools.packages.find]
+include = ["redblue.*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+"*" = ["*.html", "*.css", "*.js", "*.yml", "*.yaml", "*.txt", "*.tmpl", "*.jinja", "**/*.html", "**/*.css", "**/*.js", "**/*.tmpl"]

@@ -1,0 +1,36 @@
+{% extends "admin/base.html" %}
+{% block title %}Experiments{% endblock %}
+{% block main %}
+<h1>A/B experiments</h1>
+<p class="rb-muted">Use <code>{% raw %}{{ variant_text("key", "default") }}{% endraw %}</code> in templates (the hero headline uses <code>hero_headline</code>). Assignment is cookieless and stable per visitor per day.</p>
+{% for e, res in items %}
+<section class="rb-card">
+  <h2>{{ e.name }} <code>{{ e.key }}</code> <span class="rb-status-pill">{{ e.status }}</span></h2>
+  <p>Goal: <code>{{ e.goal }}</code>{% if e.path %} · Page: <code>{{ e.path }}</code>{% endif %}</p>
+  <table class="rb-table"><thead><tr><th scope="col">Variant</th><th scope="col">Value</th><th scope="col">Visitors</th><th scope="col">Conversions</th><th scope="col">Rate</th><th scope="col">p-value</th><th scope="col">Significant</th></tr></thead><tbody>
+  {% for v in res.variants %}{% set def = e.variants[loop.index0] %}<tr><td>{{ v.variant }}{% if loop.first %} (control){% endif %}</td><td>{{ def.value }}</td><td>{{ v.visitors }}</td><td>{{ v.conversions }}</td><td>{{ (v.rate * 100) | round(2) }}%</td><td>{{ v.p_value if v.p_value is defined else "—" }}</td><td>{{ ("yes" if v.significant else "not yet") if v.significant is defined else "—" }}</td></tr>{% endfor %}
+  </tbody></table>
+  <p class="rb-muted">{{ res.note }}</p>
+  {% if user.has_role(Role.publisher) %}<form method="post" action="/admin/experiments/{{ e.id }}/status" class="rb-inline"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% if e.status != "running" %}<button class="rb-btn rb-btn--primary" name="status" value="running">Start</button>{% else %}<button class="rb-btn" name="status" value="stopped">Stop</button>{% endif %}</form>{% endif %}
+</section>
+{% endfor %}
+{% if user.has_role(Role.editor) %}
+<h2>New experiment</h2>
+<form class="rb-form" method="post" action="/admin/experiments"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<label>Key <input name="key" required pattern="[a-z0-9_]+" placeholder="hero_headline"></label>
+<label>Name <input name="name" required></label>
+<label>Goal <input name="goal" required placeholder="form_newsletter"></label>
+<label>Page path (blank for site-wide) <input name="path" placeholder="/"></label>
+<label>Variants, one per line (first is the control) <textarea name="variants" rows="3" required></textarea></label>
+<button class="rb-btn rb-btn--primary">Create</button></form>
+{% endif %}
+<h2>Banners</h2>
+<ul>{% for b in banners %}<li>{{ b.message }} ({{ "active" if b.active else "off" }}, once every {{ b.frequency_days }} days on {{ b.path_prefix }}) <form class="rb-inline" method="post" action="/admin/banners/{{ b.id }}/toggle"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rb-link">toggle</button></form></li>{% else %}<li class="rb-muted">No banners.</li>{% endfor %}</ul>
+{% if user.has_role(Role.publisher) %}
+<form class="rb-form" method="post" action="/admin/banners"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<label>Message <input name="message" required maxlength="300"></label>
+<div class="rb-two"><label>CTA label <input name="cta_label"></label><label>CTA link <input name="cta_url"></label></div>
+<div class="rb-two"><label>Pages starting with <input name="path_prefix" value="/"></label><label>Show at most once every (days) <input type="number" name="frequency_days" value="7" min="1"></label></div>
+<button class="rb-btn">Add banner</button></form>
+{% endif %}
+{% endblock %}

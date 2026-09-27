@@ -1,0 +1,14 @@
+{% extends "admin/base.html" %}
+{% block title %}Security gate{% endblock %}
+{% block main %}
+<div class="rb-row"><h1>Security gate</h1>
+{% if user.has_role(Role.editor) %}<form method="post" action="/admin/security/scan"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rb-btn rb-btn--primary">Scan this project</button></form>{% endif %}</div>
+<p class="rb-muted">The Red agent scans this project's code and a preview it launches itself; it never scans other hosts. The Blue agent proposes fixes with regression tests as pull requests; nothing is merged automatically. In CI, use the GitHub Action (see <code>action/README.md</code>).</p>
+{% if data %}
+{% set d = data.decision %}
+<p class="rb-callout rb-callout--{{ 'success' if d.passed else 'danger' }}"><strong>{{ d.summary }}</strong></p>
+<table class="rb-table"><thead><tr><th scope="col">Severity</th><th scope="col">Finding</th><th scope="col">Location</th><th scope="col">Tool</th><th scope="col">Status</th></tr></thead><tbody>
+{% for f in data.report.findings %}<tr><td>{{ f.severity }}</td><td>{{ f.title }}</td><td><code>{{ f.file ~ ":" ~ f.line if f.file else (f.method or "GET") ~ " " ~ f.endpoint }}</code></td><td>{{ f.tool }}</td><td>{{ f.status }}</td></tr>{% endfor %}
+</tbody></table>
+{% else %}<p>No scan results yet.</p>{% endif %}
+{% endblock %}

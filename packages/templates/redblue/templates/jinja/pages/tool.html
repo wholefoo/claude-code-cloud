@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% from "cms/blocks.html" import render_blocks %}
+{% block main %}
+<div class="rb-container rb-prose">
+  {% include "partials/breadcrumbs.html" %}
+  <h1>{{ page.title }}</h1>
+  {% if page.summary %}<p class="rb-lede">{{ page.summary }}</p>{% endif %}
+  {#- Sites override this block (templates/pages/tool.html) with an HTMX-powered tool. -#}
+  <section class="rb-tool" aria-label="Tool">{% block tool %}{% endblock %}</section>
+  {{ render_blocks(page.blocks, ctx) }}
+</div>
+{% endblock %}

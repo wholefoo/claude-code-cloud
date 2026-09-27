@@ -1,0 +1,16 @@
+name: RedBlue gate
+on: pull_request
+permissions:
+  contents: write
+  pull-requests: write
+  security-events: write
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: redblue-dev/redblue/action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}

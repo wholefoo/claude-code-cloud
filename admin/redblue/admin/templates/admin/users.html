@@ -1,0 +1,23 @@
+{% extends "admin/base.html" %}
+{% block title %}Users{% endblock %}
+{% block main %}
+<h1>Users</h1>
+{% if new_password %}<p class="rb-callout rb-callout--warning" role="status">User created. Temporary password (shown once): <code>{{ new_password }}</code></p>{% endif %}
+{% if new_key %}<p class="rb-callout rb-callout--warning" role="status">API key (shown once): <code>{{ new_key }}</code></p>{% endif %}
+<p class="rb-muted">Roles: writer (drafts) → editor (review) → publisher (publish) → admin.</p>
+<table class="rb-table"><thead><tr><th scope="col">User</th><th scope="col">Role, status &amp; author profile</th><th scope="col">API key</th></tr></thead><tbody>
+{% for u in items %}<tr><td>{{ u.name }}<br><span class="rb-muted">{{ u.email }}</span></td>
+<td><form class="rb-form" method="post" action="/admin/users/{{ u.id }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<div class="rb-inline"><select name="role" aria-label="Role">{% for r in roles %}<option{% if r == u.role.name %} selected{% endif %}>{{ r }}</option>{% endfor %}</select>
+<label class="rb-check"><input type="checkbox" name="active"{% if u.is_active %} checked{% endif %}> active</label></div>
+<label>Credentials (shown in bylines) <input name="credentials" value="{{ u.credentials }}"></label>
+<label>Bio <textarea name="bio" rows="2">{{ u.bio }}</textarea></label>
+<button class="rb-btn">Save</button></form></td>
+<td><form method="post" action="/admin/users/{{ u.id }}/api-key"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label class="rb-sr" for="k{{ u.id }}">Key name</label><input id="k{{ u.id }}" name="name" placeholder="ci" size="8"> <button class="rb-btn">Create key</button></form></td></tr>{% endfor %}
+</tbody></table>
+<h2>Invite</h2>
+<form class="rb-form" method="post" action="/admin/users"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<label>Email <input name="email" type="email" required></label><label>Name <input name="name"></label>
+<label>Role <select name="role">{% for r in roles %}<option{% if r == "writer" %} selected{% endif %}>{{ r }}</option>{% endfor %}</select></label>
+<button class="rb-btn rb-btn--primary">Create user</button></form>
+{% endblock %}

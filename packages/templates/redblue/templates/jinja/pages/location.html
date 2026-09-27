@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% from "cms/blocks.html" import render_blocks %}
+{% block main %}
+<div class="rb-container rb-prose">
+  {% include "partials/breadcrumbs.html" %}
+  <h1>{{ page.title }}</h1>
+  {% if page.summary %}<p class="rb-lede">{{ page.summary }}</p>{% endif %}
+  <address class="rb-address">
+    <strong>{{ page.data.name }}</strong><br>
+    {% if page.data.street %}{{ page.data.street }}<br>{% endif %}
+    {{ page.data.city }}{% if page.data.region %}, {{ page.data.region }}{% endif %} {{ page.data.postal_code or "" }}<br>
+    {% if page.data.phone %}<a href="tel:{{ page.data.phone | replace(' ', '') }}">{{ page.data.phone }}</a>{% endif %}
+  </address>
+  {% if page.data.opening_hours %}<h2>Opening hours</h2><ul>{% for h in page.data.opening_hours %}<li>{{ h }}</li>{% endfor %}</ul>{% endif %}
+  {% if page.data.service_areas %}<h2>Areas we serve</h2><ul class="rb-inline-list">{% for a in page.data.service_areas %}<li>{{ a }}</li>{% endfor %}</ul>{% endif %}
+  {{ render_blocks(page.blocks, ctx) }}
+</div>
+{% endblock %}

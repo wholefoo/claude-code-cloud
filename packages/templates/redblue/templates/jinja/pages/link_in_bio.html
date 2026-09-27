@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block main %}
+<div class="rb-linkbio">
+  <h1>{{ page.title }}</h1>
+  {% if page.summary %}<p>{{ page.summary }}</p>{% endif %}
+  <ul>
+  {% for b in page.blocks if b.type == "cta" %}<li><a class="rb-btn rb-btn--block" href="{{ b.button_url }}" data-rb-goal="bio_link">{{ b.button_label }}</a></li>{% endfor %}
+  </ul>
+</div>
+{% endblock %}

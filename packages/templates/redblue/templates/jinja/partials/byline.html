@@ -1,0 +1,6 @@
+<p class="rb-byline">
+  {% if page.author %}By <a href="/authors/{{ page.author.id }}" rel="author">{{ page.author.name }}</a>{% if page.author.credentials %}, {{ page.author.credentials }}{% endif %} · {% endif %}
+  {% if page.published_at %}<time datetime="{{ page.published }}">Published {{ page.published_at | datefmt }}</time>{% endif %}
+  {% if page.modified_at and page.modified != page.published %} · <time datetime="{{ page.modified }}">Updated {{ page.modified_at | datefmt }}</time>{% endif %}
+  {% if page.ai_label %} · <span class="rb-badge" title="Drafted with AI assistance and reviewed by an editor">AI-assisted</span>{% endif %}
+</p>

@@ -1,0 +1,9 @@
+{% extends "pages/article.html" %}
+{% block main %}
+<div class="rb-container rb-docs">
+  <nav class="rb-docs__nav" aria-label="Documentation">
+    <ul>{% for d in page.sidebar or [] %}<li><a href="{{ d.url }}"{% if d.url == page.url %} aria-current="page"{% endif %}>{{ d.title }}</a></li>{% endfor %}</ul>
+  </nav>
+  <div>{{ super() }}</div>
+</div>
+{% endblock %}

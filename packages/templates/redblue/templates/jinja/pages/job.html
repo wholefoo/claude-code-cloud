@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% from "cms/blocks.html" import render_blocks %}
+{% block main %}
+<div class="rb-container rb-prose">
+  {% include "partials/breadcrumbs.html" %}
+  <h1>{{ page.title }}</h1>
+  <dl class="rb-facts">
+    <div><dt>Location</dt><dd>{{ "Remote" if page.data.remote else page.data.location }}</dd></div>
+    <div><dt>Type</dt><dd>{{ page.data.employment_type | replace("_", " ") | title }}</dd></div>
+    {% if page.data.salary_min %}<div><dt>Salary</dt><dd>{{ page.data.salary_min }}–{{ page.data.salary_max or page.data.salary_min }} {{ page.data.currency }}</dd></div>{% endif %}
+    {% if page.data.valid_through %}<div><dt>Apply by</dt><dd>{{ page.data.valid_through }}</dd></div>{% endif %}
+  </dl>
+  {{ render_blocks(page.blocks, ctx) }}
+  <p><a class="rb-btn rb-btn--primary" href="{{ page.data.apply_url }}" data-rb-goal="job_apply">Apply for this role</a></p>
+</div>
+{% endblock %}

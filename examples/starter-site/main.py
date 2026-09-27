@@ -1,0 +1,15 @@
+"""Starter Site: a RedBlue site. This is a normal FastAPI app; run it with
+`uvicorn main:app --reload` or `redblue dev`."""
+
+from pathlib import Path
+
+from redblue.platform.app import create_app
+
+# Templates in ./templates override any built-in page type (e.g. templates/pages/home.html).
+app = create_app(template_dirs=[Path(__file__).parent / "templates"])
+
+
+@app.get("/_site/about.json", include_in_schema=False)
+def site_info() -> dict:
+    """An example of adding your own routes alongside the platform."""
+    return {"name": "Starter Site"}

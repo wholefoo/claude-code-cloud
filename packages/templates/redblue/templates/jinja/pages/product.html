@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% from "cms/blocks.html" import render_blocks %}
+{% block main %}
+<div class="rb-container">
+  {% include "partials/breadcrumbs.html" %}
+  <div class="rb-product">
+    {% if page.data.image_key %}{% set m = ctx.media({"media_key": page.data.image_key}) %}
+    <img class="rb-product__img" src="{{ m.src }}" alt="{{ page.title }}"{% if m.width %} width="{{ m.width }}" height="{{ m.height }}"{% endif %} fetchpriority="high">{% endif %}
+    <div>
+      <h1>{{ page.title }}</h1>
+      {% if page.summary %}<p class="rb-lede">{{ page.summary }}</p>{% endif %}
+      {% if page.data.price %}<p class="rb-price"><span>{{ page.data.price }}</span> {{ page.data.currency }}</p>{% endif %}
+      <a class="rb-btn rb-btn--primary" href="/contact" data-rb-goal="product_cta">Get {{ page.title }}</a>
+    </div>
+  </div>
+  <div class="rb-prose">{{ render_blocks(page.blocks, ctx) }}</div>
+</div>
+{% endblock %}

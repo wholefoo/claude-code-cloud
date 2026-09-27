@@ -1,0 +1,7 @@
+# Security gate config. The gate launches this app itself as a preview and scans it;
+# there is deliberately no way to point it at another host.
+stack: fastapi
+app: main:app
+severity_threshold: high
+exclude: ["media/*"]
+probe_paths: ["/", "/about", "/contact", "/search"]

@@ -1,0 +1,12 @@
+{% extends "admin/base.html" %}
+{% block title %}SEO audit{% endblock %}
+{% block main %}
+<h1>SEO/AEO audit <small>score {{ report.score }}</small></h1>
+<p>{{ report.pages | length }} pages crawled · {{ report.issues | length }} issues · {{ report.broken_links | length }} broken links · {{ report.orphans | length }} orphan pages</p>
+{% if report.broken_links %}<h2>Broken links</h2><ul>{% for b in report.broken_links %}<li><code>{{ b.link }}</code> ({{ b.status }}) linked from {{ b["from"] | join(", ") }}</li>{% endfor %}</ul>{% endif %}
+{% if report.orphans %}<h2>Orphan pages</h2><p class="rb-muted">Not linked from any other page.</p><ul>{% for o in report.orphans %}<li><a href="{{ o }}">{{ o }}</a></li>{% endfor %}</ul>{% endif %}
+<h2>Issues</h2>
+<table class="rb-table"><thead><tr><th scope="col">Page</th><th scope="col">Severity</th><th scope="col">Check</th><th scope="col">Message</th></tr></thead><tbody>
+{% for i in report.issues %}<tr><td><a href="{{ i.path }}">{{ i.path }}</a></td><td>{{ i.severity }}</td><td>{{ i.check }}</td><td>{{ i.message }}</td></tr>{% else %}<tr><td colspan="4">No issues found.</td></tr>{% endfor %}
+</tbody></table>
+{% endblock %}

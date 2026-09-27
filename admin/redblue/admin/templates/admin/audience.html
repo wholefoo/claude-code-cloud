@@ -1,0 +1,16 @@
+{% extends "admin/base.html" %}
+{% block title %}Audience{% endblock %}
+{% block main %}
+<h1>Audience</h1>
+<h2>Subscribers <small class="rb-muted">double opt-in; consent stored per subscriber</small></h2>
+{% if user.has_role(Role.admin) %}<p><a class="rb-btn" href="/admin/audience/subscribers.csv">Export confirmed (CSV)</a></p>{% endif %}
+<table class="rb-table"><thead><tr><th scope="col">Email</th><th scope="col">List</th><th scope="col">Status</th><th scope="col">Consent</th><th scope="col">Source</th></tr></thead><tbody>
+{% for s in subs %}<tr><td>{{ s.email }}</td><td>{{ s.list_name }}</td><td>{{ s.status }}</td><td title="{{ s.consent_text }}">{{ s.consent_at | datefmt("%Y-%m-%d") }}</td><td>{{ s.consent_source }}</td></tr>
+{% else %}<tr><td colspan="5" class="rb-muted">No subscribers yet.</td></tr>{% endfor %}
+</tbody></table>
+<h2>Leads &amp; messages</h2>
+<table class="rb-table"><thead><tr><th scope="col">When</th><th scope="col">Kind</th><th scope="col">From</th><th scope="col">Message</th></tr></thead><tbody>
+{% for l in leads %}<tr><td>{{ l.created_at | datefmt("%Y-%m-%d %H:%M") }}</td><td>{{ l.kind }}</td><td>{{ l.name }} &lt;{{ l.email }}&gt;</td><td>{{ l.message[:300] }}</td></tr>
+{% else %}<tr><td colspan="4" class="rb-muted">No leads yet.</td></tr>{% endfor %}
+</tbody></table>
+{% endblock %}

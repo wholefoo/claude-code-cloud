@@ -1,0 +1,5 @@
+{% if page.toc and page.toc | length >= 3 %}
+<nav class="rb-toc" aria-label="On this page"><h2 class="rb-toc__title">On this page</h2><ol>
+{% for h in page.toc %}<li class="rb-toc__l{{ h.level }}"><a href="#{{ h.anchor }}">{{ h.text }}</a></li>{% endfor %}
+</ol></nav>
+{% endif %}

@@ -1,0 +1,88 @@
+{
+  "site_name": "Starter Site",
+  "description": "A SaaS product for small teams with a blog, docs, FAQ, glossary and newsletter",
+  "audience": "",
+  "pages": [
+    {
+      "page_type": "home",
+      "title": "Home",
+      "slug": "home",
+      "purpose": "Explain the offer and route visitors"
+    },
+    {
+      "page_type": "blog_index",
+      "title": "Blog",
+      "slug": "blog",
+      "purpose": "Latest articles"
+    },
+    {
+      "page_type": "knowledge_base",
+      "title": "Documentation",
+      "slug": "docs",
+      "purpose": "Guides and reference"
+    },
+    {
+      "page_type": "pricing",
+      "title": "Pricing",
+      "slug": "pricing",
+      "purpose": "Plans and FAQs"
+    },
+    {
+      "page_type": "features",
+      "title": "Features",
+      "slug": "features",
+      "purpose": "What the product does"
+    },
+    {
+      "page_type": "faq",
+      "title": "FAQ",
+      "slug": "faq",
+      "purpose": "Answers to common questions"
+    },
+    {
+      "page_type": "glossary_index",
+      "title": "Glossary",
+      "slug": "glossary",
+      "purpose": "Definitions of key terms"
+    },
+    {
+      "page_type": "about",
+      "title": "About",
+      "slug": "about",
+      "purpose": "Who is behind the site"
+    },
+    {
+      "page_type": "contact",
+      "title": "Contact",
+      "slug": "contact",
+      "purpose": "How to get in touch"
+    },
+    {
+      "page_type": "privacy",
+      "title": "Privacy policy",
+      "slug": "privacy",
+      "purpose": "How personal data is handled"
+    }
+  ],
+  "collections": [
+    "post",
+    "doc",
+    "guide",
+    "feature",
+    "integration",
+    "comparison",
+    "changelog",
+    "question",
+    "glossary"
+  ],
+  "features": [
+    "contact",
+    "newsletter",
+    "waitlist"
+  ],
+  "questions": [
+    "What is Starter Site?",
+    "Who is Starter Site for?"
+  ],
+  "primary_color": "#1f4fd1"
+}

@@ -1,0 +1,18 @@
+{% extends "admin/base.html" %}
+{% block title %}Media{% endblock %}
+{% block main %}
+<h1>Media library</h1>
+<form class="rb-form" method="post" action="/admin/media" enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>File (PNG, JPEG, GIF, WebP, AVIF or PDF) <input type="file" name="file" required accept="image/png,image/jpeg,image/gif,image/webp,image/avif,application/pdf"></label>
+  <label>Alt text (required, describe the image for screen readers) <input name="alt" required maxlength="300"></label>
+  <label>Caption <input name="caption" maxlength="500"></label>
+  <button class="rb-btn rb-btn--primary" type="submit">Upload</button>
+</form>
+<ul class="rb-media-grid">
+{% for m in items %}
+  <li class="rb-card">{% if m.mime.startswith("image/") %}<img src="/media/{{ m.key }}" alt="{{ m.alt }}" loading="lazy"{% if m.width %} width="{{ m.width }}" height="{{ m.height }}"{% endif %}>{% else %}<p>📄 {{ m.mime }}</p>{% endif %}
+  <p><code>{{ m.key }}</code></p><p class="rb-muted">{{ m.alt }} · {{ (m.size / 1024) | round(1) }} KB</p></li>
+{% else %}<li class="rb-muted">No media yet.</li>{% endfor %}
+</ul>
+{% endblock %}

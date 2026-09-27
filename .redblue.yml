@@ -1,0 +1,19 @@
+# The project dogfoods its own gate. The platform app is launched in-process as the preview.
+stack: fastapi
+app: redblue.platform.app:app
+severity_threshold: high
+paths: [packages, admin]
+exclude: ["examples/*", "**/tests/*", "evals/*"]
+scanners:
+  pip_audit: false
+spend_limit_usd: 1.0
+probe_paths: ["/", "/search", "/sitemap.xml", "/robots.txt", "/llms.txt"]
+ignore:
+  - fingerprint: 1ccc391c5eb0a1bd
+    reason: >-
+      builder/scaffold.py renders Python, YAML and Markdown project files, not HTML;
+      autoescaping would corrupt generated code. Inputs are the validated BuildPlan.
+  - fingerprint: d15923abdd6131dd
+    reason: >-
+      admin back() only receives server-side constant paths from its callers; user input
+      only reaches the query string, URL-quoted. Login redirects use safe_redirect_target().

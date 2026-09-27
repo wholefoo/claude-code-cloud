@@ -1,0 +1,72 @@
+# Known-safe code: any finding at medium or above counts as a false positive.
+- name: parameterised-sql
+  file: app.py
+  code: |
+    def search(db, q):
+        return db.execute("SELECT * FROM products WHERE name = ?", (q,)).fetchall()
+- name: sqlalchemy-bound
+  file: app.py
+  code: |
+    from sqlalchemy import text
+    def get(session, uid):
+        return session.execute(text("SELECT * FROM users WHERE id = :id"), {"id": uid})
+- name: subprocess-list
+  file: app.py
+  code: |
+    import subprocess
+    def ping(host):
+        subprocess.run(["ping", "-c", "1", host], check=True)
+- name: yaml-safe
+  file: app.py
+  code: |
+    import yaml
+    def parse(body):
+        return yaml.safe_load(body)
+- name: escaped-html
+  file: app.py
+  code: |
+    from html import escape
+    from fastapi import FastAPI
+    from fastapi.responses import HTMLResponse
+    app = FastAPI()
+    @app.get("/hello")
+    def hello(name: str):
+        return HTMLResponse(f"<h1>Hello {escape(name)}</h1>")
+- name: safe-redirect
+  file: app.py
+  code: |
+    from fastapi import FastAPI
+    from fastapi.responses import RedirectResponse
+    app = FastAPI()
+    @app.get("/done")
+    def done():
+        return RedirectResponse("/dashboard")
+- name: secret-from-env
+  file: settings.py
+  code: |
+    import os
+    STRIPE_SECRET_KEY = os.environ["STRIPE_SECRET_KEY"]
+- name: jinja-autoescaped
+  file: templates/comment.html
+  code: |
+    <p>{{ comment.body }}</p>
+- name: argon2-password
+  file: auth.py
+  code: |
+    from argon2 import PasswordHasher
+    def hash_password(password):
+        return PasswordHasher().hash(password)
+- name: secrets-token
+  file: auth.py
+  code: |
+    import secrets
+    def reset_token():
+        return secrets.token_urlsafe(32)
+- name: cors-explicit
+  file: app.py
+  code: |
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+    app = FastAPI()
+    app.add_middleware(CORSMiddleware, allow_origins=["https://app.example.com"],
+                       allow_credentials=True)

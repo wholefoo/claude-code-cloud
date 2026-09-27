@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{% block title %}Admin{% endblock %} · {{ settings.site_name }}</title>
+<link rel="stylesheet" href="/_rb/tokens.css">
+<link rel="stylesheet" href="/static/rb/site.css">
+<link rel="stylesheet" href="/static/admin/admin.css">
+<meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false,"selfRequestsOnly":true}'>
+<script src="/static/rb/htmx.min.js" defer nonce="{{ nonce }}"></script>
+</head>
+<body class="rb-admin" hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
+<a class="rb-skip" href="#main">Skip to content</a>
+{% if user %}
+<header class="rb-admin__top">
+  <a class="rb-brand" href="/admin">{{ settings.site_name }} <span class="rb-muted">admin</span></a>
+  <span class="rb-muted">{{ user.email }} · {{ user.role.name }}</span>
+  <a href="/" target="_blank" rel="noopener">View site ↗</a>
+  <form method="post" action="/admin/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rb-btn" type="submit">Sign out</button></form>
+</header>
+<div class="rb-admin__layout">
+<nav class="rb-admin__nav" aria-label="Admin">
+  <ul>
+    {% set p = request.url.path %}
+    <li><a href="/admin" {% if p == "/admin" %}aria-current="page"{% endif %}>Dashboard</a></li>
+    <li><a href="/admin/content" {% if p.startswith("/admin/content") %}aria-current="page"{% endif %}>Content</a></li>
+    <li><a href="/admin/media" {% if p.startswith("/admin/media") %}aria-current="page"{% endif %}>Media</a></li>
+    <li><a href="/admin/redirects" {% if p.startswith("/admin/redirects") %}aria-current="page"{% endif %}>Redirects</a></li>
+    <li><a href="/admin/growth" {% if p.startswith("/admin/growth") %}aria-current="page"{% endif %}>Growth</a></li>
+    <li><a href="/admin/experiments" {% if p.startswith("/admin/experiments") %}aria-current="page"{% endif %}>Experiments</a></li>
+    {% if user.has_role(Role.editor) %}
+    <li><a href="/admin/audience" {% if p.startswith("/admin/audience") %}aria-current="page"{% endif %}>Audience</a></li>
+    <li><a href="/admin/observe" {% if p.startswith("/admin/observe") %}aria-current="page"{% endif %}>Observability</a></li>
+    {% endif %}
+    <li><a href="/admin/security" {% if p.startswith("/admin/security") %}aria-current="page"{% endif %}>Security gate</a></li>
+    <li><a href="/admin/templates" {% if p.startswith("/admin/templates") %}aria-current="page"{% endif %}>Template library</a></li>
+    {% if user.has_role(Role.admin) %}<li><a href="/admin/users" {% if p.startswith("/admin/users") %}aria-current="page"{% endif %}>Users</a></li>{% endif %}
+  </ul>
+</nav>
+<main id="main" class="rb-admin__main" tabindex="-1">
+  {% if flash %}<p class="rb-flash" role="status">{{ flash }}</p>{% endif %}
+  {% block main %}{% endblock %}
+</main>
+</div>
+{% else %}
+<main id="main" class="rb-admin__main">{% block anon %}{% endblock %}</main>
+{% endif %}
+</body>
+</html>

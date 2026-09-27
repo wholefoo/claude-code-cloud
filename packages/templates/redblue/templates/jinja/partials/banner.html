@@ -1,0 +1,6 @@
+<aside class="rb-banner" role="region" aria-label="Announcement" data-rb-banner="{{ banner.id }}" data-rb-banner-days="{{ banner.frequency_days }}">
+  <div class="rb-container rb-banner__inner">
+    <p>{{ banner.message }}{% if banner.cta_url %} <a href="{{ banner.cta_url }}" data-rb-goal="banner_{{ banner.id }}">{{ banner.cta_label or "Learn more" }}</a>{% endif %}</p>
+    <button type="button" class="rb-banner__close" data-rb-banner-close aria-label="Dismiss announcement">×</button>
+  </div>
+</aside>

@@ -1,0 +1,26 @@
+{% extends "admin/base.html" %}
+{% block title %}Observability{% endblock %}
+{% block main %}
+<h1>Observability <small class="rb-muted">last {{ snap.window_hours | int }}h</small></h1>
+<section class="rb-kpis">
+  <div class="rb-card"><h2>Requests</h2><p class="rb-kpi">{{ snap.totals.requests }}</p></div>
+  <div class="rb-card"><h2>Error rate</h2><p class="rb-kpi">{{ (snap.totals.error_rate * 100) | round(2) }}%</p></div>
+  <div class="rb-card"><h2>Open error groups</h2><p class="rb-kpi">{{ snap.errors | length }}</p></div>
+  <div class="rb-card"><h2>Agent spend (30d)</h2><p class="rb-kpi">${{ "%.2f" | format(snap.agent_costs.total_cost_usd) }}</p></div>
+</section>
+<h2>What changed</h2>
+<ul>{% for a in anomalies %}<li><strong>{{ a.explanation }}</strong></li>{% else %}<li class="rb-muted">No anomalies detected.</li>{% endfor %}</ul>
+<h2>Routes</h2>
+<table class="rb-table"><thead><tr><th scope="col">Route</th><th scope="col">Requests</th><th scope="col">p50</th><th scope="col">p95</th><th scope="col">Errors</th></tr></thead><tbody>
+{% for r in snap.routes[:30] %}<tr><td><code>{{ r.method }} {{ r.route }}</code></td><td>{{ r.count }}</td><td>{{ r.p50_ms | round(1) if r.p50_ms is not none else "—" }} ms</td><td>{{ r.p95_ms | round(1) if r.p95_ms is not none else "—" }} ms</td><td>{{ (r.error_rate * 100) | round(1) }}%</td></tr>{% else %}<tr><td colspan="5" class="rb-muted">No traffic recorded yet.</td></tr>{% endfor %}
+</tbody></table>
+<h2>Errors</h2>
+<table class="rb-table"><thead><tr><th scope="col">Error</th><th scope="col">Count</th><th scope="col">Last seen</th></tr></thead><tbody>
+{% for e in snap.errors %}<tr><td><code>{{ e.exc_type }}</code> {{ e.message[:120] }}</td><td>{{ e.count }}</td><td>{{ e.last_seen }}</td></tr>{% else %}<tr><td colspan="3" class="rb-muted">No errors.</td></tr>{% endfor %}
+</tbody></table>
+<h2>Agent costs</h2>
+<table class="rb-table"><thead><tr><th scope="col">Agent</th><th scope="col">Calls</th><th scope="col">Tokens in/out</th><th scope="col">Cost</th></tr></thead><tbody>
+{% for a in snap.agent_costs.by_agent %}<tr><td>{{ a.agent }}</td><td>{{ a.calls }}</td><td>{{ a.input_tokens }} / {{ a.output_tokens }}</td><td>${{ "%.4f" | format(a.cost_usd) }}</td></tr>{% else %}<tr><td colspan="4" class="rb-muted">No agent calls yet.</td></tr>{% endfor %}
+</tbody></table>
+<p class="rb-muted">JSON API: <code>/admin/observe/api/metrics</code>, <code>/errors</code>, <code>/anomalies</code>, <code>/agent-costs</code>. Export to any OpenTelemetry backend with <code>OTEL_EXPORTER_OTLP_ENDPOINT</code>.</p>
+{% endblock %}

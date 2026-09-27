@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "cms/blocks.html" import render_blocks %}
+{% block main %}
+<div class="rb-container rb-layout{% if page.toc and page.toc | length >= 3 %} rb-layout--toc{% endif %}">
+  <article class="rb-prose" aria-labelledby="rb-title">
+    {% include "partials/breadcrumbs.html" %}
+    <header class="rb-article__header">
+      {% if page.category %}<p class="rb-eyebrow"><a href="{{ page.crumbs[1][1] if page.crumbs | length > 2 else '' }}/category/{{ page.category }}">{{ page.category }}</a></p>{% endif %}
+      <h1 id="rb-title">{{ page.title }}</h1>
+      {% if page.summary %}<p class="rb-lede">{{ page.summary }}</p>{% endif %}
+      {% include "partials/byline.html" %}
+      {% if page_type.key in ("comparison", "alternatives") and page.data.disclosure %}
+      <p class="rb-disclosure" role="note">{{ page.data.disclosure }}</p>
+      {% endif %}
+      {% if page_type.key == "glossary_term" and page.data.short_definition %}
+      <p class="rb-definition"><dfn>{{ page.title }}</dfn>: {{ page.data.short_definition }}</p>
+      {% endif %}
+      {% if page_type.key == "case_study" and page.data.results %}
+      <ul class="rb-results">{% for r in page.data.results %}<li>{{ r }}</li>{% endfor %}</ul>
+      {% endif %}
+    </header>
+    {{ render_blocks(page.blocks, ctx) }}
+    {% if page.tags %}<p class="rb-tags">{% for t in page.tags %}<a class="rb-tag" href="{{ page.crumbs[1][1] if page.crumbs | length > 2 else '' }}/tag/{{ t }}">#{{ t }}</a> {% endfor %}</p>{% endif %}
+    {% include "partials/related.html" %}
+  </article>
+  {% include "partials/toc.html" %}
+</div>
+{% endblock %}

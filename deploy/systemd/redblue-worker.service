@@ -1,0 +1,19 @@
+[Unit]
+Description=RedBlue background worker
+After=network.target postgresql.service
+
+[Service]
+User=redblue
+Group=redblue
+WorkingDirectory=/srv/redblue/site
+EnvironmentFile=/etc/redblue/env
+ExecStart=/srv/redblue/venv/bin/redblue worker
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/redblue/site
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

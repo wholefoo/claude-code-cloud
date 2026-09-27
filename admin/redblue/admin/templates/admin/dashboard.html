@@ -1,0 +1,36 @@
+{% extends "admin/base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block main %}
+<h1>Dashboard</h1>
+{% if not ai_available %}<p class="rb-callout rb-callout--info">Agents run in deterministic mode. Set <code>ANTHROPIC_API_KEY</code> (your own key) to enable the builder, content, growth, Red/Blue and ops agents.</p>{% endif %}
+<section class="rb-kpis">
+  <div class="rb-card"><h2>Visitors (7d)</h2><p class="rb-kpi">{{ traffic.visitors }}</p><p class="rb-muted">{{ traffic.pageviews }} pageviews</p></div>
+  <div class="rb-card"><h2>Published</h2><p class="rb-kpi">{{ counts.published }}</p><p class="rb-muted">{{ counts.draft }} drafts · {{ counts.in_review }} in review</p></div>
+  <div class="rb-card"><h2>Open errors</h2><p class="rb-kpi">{{ obs.errors | length if obs else "—" }}</p><p class="rb-muted"><a href="/admin/observe">Observability</a></p></div>
+  <div class="rb-card"><h2>Agent spend (30d)</h2><p class="rb-kpi">${{ "%.2f" | format(costs | sum(attribute="cost_usd")) }}</p><p class="rb-muted">{{ costs | sum(attribute="calls") }} calls</p></div>
+</section>
+<div class="rb-two">
+<section>
+  <h2>Awaiting review</h2>
+  {% if review %}<ul>{% for e in review %}<li><a href="/admin/content/{{ e.id }}">{{ e.title }}</a> <span class="rb-status-pill rb-status-pill--{{ e.status.value }}">{{ e.status.value | replace("_", " ") }}</span>{% if e.ai_generated %} <span class="rb-badge">AI draft</span>{% endif %}</li>{% endfor %}</ul>
+  {% else %}<p class="rb-muted">Nothing waiting.</p>{% endif %}
+  <h2>Traffic sources (7d)</h2>
+  <table><tbody>{% for s, n in traffic.sources %}<tr><th scope="row">{{ s }}</th><td>{{ n }}</td></tr>{% else %}<tr><td class="rb-muted">No visits yet.</td></tr>{% endfor %}</tbody></table>
+  {% if traffic.ai_assistants %}<p>AI assistant referrals: {% for a, n in traffic.ai_assistants %}{{ a }} ({{ n }}){% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+</section>
+<section>
+  <h2>Growth</h2>
+  {% if report %}<p><strong>{{ report.headline }}</strong></p>
+  <ol>{% for r in report.recommendations[:6] %}<li>{{ r.title }} <span class="rb-muted">({{ r.priority }})</span></li>{% endfor %}</ol>
+  {% else %}<p class="rb-muted">No growth report yet. <a href="/admin/growth">Generate one</a>.</p>{% endif %}
+  <h2>Quick draft</h2>
+  <form class="rb-form" method="post" action="/admin/content/draft">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Collection <select name="collection">{% for c in collections.values() %}<option value="{{ c.name }}"{% if c.name == "post" %} selected{% endif %}>{{ c.label }}</option>{% endfor %}</select></label>
+    <label>Brief <textarea name="brief" rows="3" required></textarea></label>
+    <label>Target questions (one per line) <textarea name="questions" rows="2"></textarea></label>
+    <button class="rb-btn rb-btn--primary" type="submit">Draft with content agent</button>
+  </form>
+</section>
+</div>
+{% endblock %}
