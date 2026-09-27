@@ -146,7 +146,7 @@ def test_ass_escapes_override_tags():
             Beat(narration="bye", visual_query="q", seconds=2),
         ],
     )
-    ass = build_ass(s, [2, 2], 1080, 1920)
+    ass = build_ass(s, [2, 2])
     events = ass.split("[Events]")[1]
     # Only our own karaoke tags may appear; user text can't open an override block.
     assert "\\pos" not in events and "\\b1" not in events

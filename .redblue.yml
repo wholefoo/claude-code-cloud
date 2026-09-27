@@ -17,3 +17,8 @@ ignore:
     reason: >-
       admin back() only receives server-side constant paths from its callers; user input
       only reaches the query string, URL-quoted. Login redirects use safe_redirect_target().
+  - fingerprint: 303c939397b24525
+    reason: >-
+      core/db.py add_missing_columns() runs ALTER TABLE ADD COLUMN; DDL identifiers can't be
+      bound parameters. Table/column names and types come from our own model metadata (never
+      user input), are validated against strict patterns and quoted by the dialect.

@@ -308,6 +308,19 @@ def growth_audit():
 # ---------------------------------------------------------------- video
 
 
+@video_app.command("templates")
+def video_templates():
+    """List video templates and output formats."""
+    from redblue.video.templates import FORMATS, TEMPLATES
+
+    typer.secho("Templates", bold=True)
+    for t in TEMPLATES.values():
+        typer.echo(f"  {t.key:8} {t.description}")
+    typer.secho("Formats", bold=True)
+    for f in FORMATS.values():
+        typer.echo(f"  {f.key:5} {f.width}x{f.height}  {f.label}")
+
+
 def _video():
     from redblue.video.config import get_video_settings
     from redblue.video.pipeline import Pipeline
@@ -330,6 +343,8 @@ def video_sweep(limit: int = 15):
 def video_make(
     topic: str = typer.Option("", help="Topic to research"),
     trend: int = typer.Option(0, help="Trend id from `redblue video sweep`"),
+    template: str = typer.Option("", help="bold, clean, news or minimal"),
+    fmt: list[str] = typer.Option([], "--format", "-f", help="9:16, 4:5, 1:1 or 16:9; repeatable"),
 ):
     """Research, script and render a video, then stop for human review in the admin."""
     from redblue.video.models import Trend
@@ -338,6 +353,8 @@ def video_make(
     with pipe.platform.db.session() as s:
         t = s.get(Trend, trend) if trend else None
         p = pipe.start_project(s, trend=t, topic=topic or None)
+        if template or fmt:
+            pipe.set_look(p, template or pipe.s.template, list(fmt) or pipe.s.formats)
         try:
             pipe.run(s, p)
         except Exception as exc:  # noqa: BLE001

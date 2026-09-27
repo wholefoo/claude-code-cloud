@@ -18,8 +18,8 @@ class VideoSettings(BaseSettings):
     region: str = "US"
     output_dir: Path = Path("./video-output")
     target_seconds: int = 50  # short-form sweet spot
-    width: int = 1080
-    height: int = 1920
+    template: str = "bold"  # bold / clean / news / minimal (see templates.py)
+    formats: list[str] = Field(default_factory=lambda: ["9:16"])  # 9:16, 4:5, 1:1, 16:9
     voice_id: str = "21m00Tcm4TlvDq8ikWAM"  # ElevenLabs default voice; override per brand
     captions: Literal["whisper", "even"] = "whisper"  # whisper falls back to even if absent
     whisper_model: str = "base.en"  # faster-whisper model (tiny.en … large-v3)

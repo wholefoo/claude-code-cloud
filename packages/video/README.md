@@ -43,8 +43,9 @@ That's useful for testing, and you add keys as you go.
 | `ANTHROPIC_API_KEY` | Brief and script writing (structured, cited) | Deterministic templates |
 
 Settings (`RB_VIDEO_*`): `NICHE`, `KEYWORDS` (JSON list), `REGION`, `SUBREDDITS` (JSON list),
-`GOOGLE_TRENDS_GEO`, `REDDIT_USER_AGENT`, `OUTPUT_DIR`, `TARGET_SECONDS`, `WIDTH`/`HEIGHT`
-(default 1080×1920), `VOICE_ID`, `CAPTIONS` (`whisper` or `even`), `WHISPER_MODEL`.
+`GOOGLE_TRENDS_GEO`, `REDDIT_USER_AGENT`, `OUTPUT_DIR`, `TARGET_SECONDS`, `TEMPLATE`
+(default `bold`), `FORMATS` (JSON list, default `["9:16"]`), `VOICE_ID`, `CAPTIONS`
+(`whisper` or `even`), `WHISPER_MODEL`.
 
 ### How sources are compared
 
@@ -74,6 +75,31 @@ FFmpeg (the static binary from `imageio-ffmpeg`, or your system `ffmpeg`) render
 from its stock clip (scaled/cropped to 9:16) or a brand colour, mixes the narration, and burns
 in a title and word-grouped captions from a generated ASS subtitle file.
 
+### Templates and formats
+
+One script, one set of footage and narration, rendered in every format you pick, each
+framed separately (footage is scaled and cropped, text sizes scale with the frame).
+
+| Format | Size | For |
+|---|---|---|
+| `9:16` | 1080×1920 | Shorts, Reels, TikTok |
+| `4:5` | 1080×1350 | Instagram/Facebook/LinkedIn feed |
+| `1:1` | 1080×1080 | Square feed |
+| `16:9` | 1920×1080 | YouTube, websites |
+
+| Template | Look |
+|---|---|
+| `bold` | Big title up top, boxed captions, yellow word highlight |
+| `clean` | Unboxed shadowed captions, darkened footage with vignette, small lower-third title, thin cyan progress bar at the top |
+| `news` | Red lower-third title banner, boxed captions, red progress bar |
+| `minimal` | No title; large centred captions over blurred, darkened footage |
+
+Pick them per project in the admin (**Look** panel), from the CLI
+(`redblue video make --topic "…" --template clean -f 9:16 -f 16:9`), or site-wide with
+`RB_VIDEO_TEMPLATE` / `RB_VIDEO_FORMATS`. Stock footage is searched in the first format's
+orientation. `redblue video templates` lists everything. Templates are plain dataclasses in
+`templates.py`, so adding a brand look is a few lines.
+
 ### Word-level captions (Whisper)
 
 ```bash
@@ -97,5 +123,5 @@ per beat on CPU with `base.en`). For richer motion graphics, swap in Remotion la
 
 ## Next steps (not in the MVP)
 
-Multiple templates and aspect ratios, performance tracking from platform analytics to tune
+Performance tracking from platform analytics to tune
 scoring, and optional direct upload after approval.
