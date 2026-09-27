@@ -72,10 +72,18 @@ def markdown(report: ScanReport, decision: GateDecision) -> str:
     return "\n".join(lines) + "\n"
 
 
-def sarif(report: ScanReport) -> dict:
+def sarif(report: ScanReport, *, include_suppressed: bool = False) -> dict:
+    """SARIF 2.1.0 for GitHub code scanning.
+
+    Accepted and false-positive findings are left out by default: code scanning does not
+    honour SARIF ``suppressions`` and would reopen them as alerts. They remain listed in the
+    Markdown and JSON reports with their triage notes.
+    """
     rules: dict[str, dict] = {}
     results = []
     for f in report.findings:
+        if f.status != FindingStatus.open and not include_suppressed:
+            continue
         rules.setdefault(
             f.rule_id,
             {
