@@ -1275,6 +1275,79 @@ class Tumblr:
         return str(self._json(r).get("state", ""))
 
 
+class Vimeo:
+    """Vimeo API: create the video with its privacy, send the file with tus (resumable
+    PATCH), then read transcode/privacy status. The person picks the privacy."""
+
+    API = "https://api.vimeo.com"
+    ACCEPT = "application/vnd.vimeo.*+json;version=3.4"
+
+    def __init__(self, token: str | None, client: httpx.Client | None = None):
+        if not token:
+            raise MissingKey("Set VIMEO_ACCESS_TOKEN to upload to Vimeo.")
+        self.token, self.http = token, _client(client)
+
+    @property
+    def _headers(self) -> dict:
+        return {"Authorization": f"Bearer {self.token}", "Accept": self.ACCEPT}
+
+    def _json(self, r: httpx.Response) -> dict:
+        body = r.json() if r.content else {}
+        if r.status_code >= 400:
+            detail = body.get("developer_message") or body.get("error") or r.status_code
+            raise PlatformError(f"Vimeo: {detail}")
+        return body
+
+    def upload(self, path, *, name: str, description: str, privacy: str) -> tuple[str, str]:
+        """Returns (video id, link)."""
+        if privacy not in ("nobody", "unlisted", "anybody"):
+            raise ValueError("Unsupported Vimeo privacy.")
+        data = path.read_bytes()
+        r = self.http.post(
+            f"{self.API}/me/videos",
+            headers={**self._headers, "Content-Type": "application/json"},
+            json={
+                "upload": {"approach": "tus", "size": len(data)},
+                "name": name,
+                "description": description,
+                "privacy": {"view": privacy},
+            },
+        )
+        body = self._json(r)
+        m = re.fullmatch(r"/videos/(\d{1,20})", str(body.get("uri", "")))
+        if not m:
+            raise PlatformError("Vimeo didn't return a video id.")
+        url = _https_host((body.get("upload") or {}).get("upload_link", ""), ("vimeo.com",))
+        offset = 0
+        for _ in range(20):  # resume from Vimeo's reported offset if a PATCH stops short
+            r = self.http.patch(
+                url,
+                headers={
+                    "Tus-Resumable": "1.0.0",
+                    "Upload-Offset": str(offset),
+                    "Content-Type": "application/offset+octet-stream",
+                },
+                content=data[offset:],
+                timeout=httpx.Timeout(600.0, connect=10.0),
+            )
+            if r.status_code >= 400:
+                raise PlatformError(f"Vimeo upload failed ({r.status_code}).")
+            offset = int(r.headers.get("upload-offset", len(data)))
+            if offset >= len(data):
+                break
+        else:
+            raise PlatformError("Vimeo didn't accept the whole file.")
+        return m.group(1), str(body.get("link") or f"https://vimeo.com/{m.group(1)}")
+
+    def status(self, video_id: str) -> dict:
+        r = self.http.get(
+            f"{self.API}/videos/{video_id}",
+            headers=self._headers,
+            params={"fields": "transcode.status,privacy.view,link"},
+        )
+        return self._json(r)
+
+
 def _int(value) -> int | None:
     try:
         return int(value) if value is not None and value != "" else None

@@ -14,8 +14,8 @@ Trends
 ```
 
 "You upload" means by hand, or with the optional upload buttons for YouTube, TikTok,
-Instagram, Facebook, LinkedIn, X, Threads, Pinterest, Reddit, Bluesky and Tumblr, which a
-person presses for each video.
+Instagram, Facebook, LinkedIn, X, Threads, Pinterest, Reddit, Bluesky, Tumblr and Vimeo,
+which a person presses for each video.
 
 ## Quickstart
 
@@ -57,6 +57,7 @@ That's useful for testing, and you add keys as you go.
 | `REDDIT_CLIENT_ID` + `REDDIT_CLIENT_SECRET` + `REDDIT_POST_REFRESH_TOKEN` + `REDDIT_USERNAME` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Upload an approved render, then post it to one subreddit you choose | You upload it yourself |
 | `BLUESKY_HANDLE` + `BLUESKY_APP_PASSWORD` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Upload an approved render, then post it with a second click | You upload it yourself |
 | `TUMBLR_CLIENT_ID` + `TUMBLR_CLIENT_SECRET` + `TUMBLR_REFRESH_TOKEN` + `RB_VIDEO_TUMBLR_BLOG` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Post an approved render to your blog (a draft by default) | You upload it yourself |
+| `VIMEO_ACCESS_TOKEN` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Upload an approved render to Vimeo (only you can watch it by default) | You upload it yourself |
 
 Settings (`RB_VIDEO_*`): `NICHE`, `KEYWORDS` (JSON list), `REGION`, `SUBREDDITS` (JSON list),
 `GOOGLE_TRENDS_GEO`, `REDDIT_USER_AGENT`, `OUTPUT_DIR`, `TARGET_SECONDS`, `TEMPLATE`
@@ -96,10 +97,11 @@ about something else (say, football scores) ranks below a smaller trend in your 
   upload description lists sources, credits and an AI-assistance note.
 - **Human in the loop.** Renders wait in review; approval only marks them ready for *you*
   to upload. Optional direct upload to YouTube, TikTok, Instagram, Facebook, LinkedIn, X,
-  Threads, Pinterest, Reddit, Bluesky and Tumblr exists, but it's off by default and every
+  Threads, Pinterest, Reddit, Bluesky, Tumblr and Vimeo exists, but it's off by default and every
   upload is a person pressing a button (or confirming in the CLI): no job, sweep or pipeline
   step ever uploads or publishes. YouTube uploads are private unless the person chooses
-  otherwise, TikTok, Facebook and Tumblr go to drafts by default, and the others need a
+  otherwise, TikTok, Facebook and Tumblr go to drafts by default, Vimeo uploads are "only
+  me" by default, and the others need a
   second click to publish. Reddit posts go to one subreddit per render, chosen by the person each time.
 
 ## Rendering
@@ -536,6 +538,33 @@ export TUMBLR_CLIENT_ID=... TUMBLR_CLIENT_SECRET=... TUMBLR_REFRESH_TOKEN=...
 export RB_VIDEO_TUMBLR_BLOG=yourblog
 export RB_VIDEO_TUMBLR_TOKEN_FILE=/var/lib/redblue/tumblr.token
 ```
+
+## Upload to Vimeo (optional)
+
+One upload (Vimeo's resumable tus protocol) with the privacy chosen up front:
+
+- **Only me (default):** nobody else can watch it. When you change its privacy on Vimeo,
+  **Check status** (or the tracking job) notices and records the link.
+- **Anyone with the link** (paid Vimeo plans) or **Anyone:** needs a second confirmation;
+  the link is recorded once Vimeo has transcoded it.
+
+The description is pre-filled with the upload description (sources, credits, AI note)
+(`redblue video vimeo 12 -f 16:9 --privacy nobody`). Upload quotas depend on your Vimeo plan.
+
+**Setup.** At developer.vimeo.com, create an app and generate a personal access token for
+your account with the scopes `public private upload edit video_files`. Vimeo tokens don't
+expire until you revoke them.
+
+```bash
+export VIMEO_ACCESS_TOKEN=...
+```
+
+## Twitch
+
+Not wired up: Twitch has no video upload API. The old v5 upload endpoint was shut down in
+2022, and the current (Helix) API can only list and delete videos. Upload in Twitch's
+Video Producer (available to Affiliates and Partners), then record the video's
+`twitch.tv/videos/…` link under **Published** to track it.
 
 ## Snapchat
 

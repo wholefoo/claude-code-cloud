@@ -99,6 +99,7 @@ class VideoSettings(BaseSettings):
     )
     bluesky_handle: str | None = Field(default=None, alias="BLUESKY_HANDLE")
     bluesky_app_password: SecretStr | None = Field(default=None, alias="BLUESKY_APP_PASSWORD")
+    vimeo_access_token: SecretStr | None = Field(default=None, alias="VIMEO_ACCESS_TOKEN")
     tumblr_client_id: str | None = Field(default=None, alias="TUMBLR_CLIENT_ID")
     tumblr_client_secret: SecretStr | None = Field(default=None, alias="TUMBLR_CLIENT_SECRET")
     tumblr_refresh_token: SecretStr | None = Field(default=None, alias="TUMBLR_REFRESH_TOKEN")

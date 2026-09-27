@@ -45,6 +45,8 @@ PLATFORMS: dict[str, tuple[str, ...]] = {
     "reddit": ("reddit.com", "redd.it"),
     "bluesky": ("bsky.app",),
     "tumblr": ("tumblr.com",),
+    "vimeo": ("vimeo.com",),
+    "twitch": ("twitch.tv",),  # recorded by hand (no upload API)
     "other": (),
 }
 MIN_PEERS = 3  # mature videos on a platform before lift (vs. your median) is meaningful
