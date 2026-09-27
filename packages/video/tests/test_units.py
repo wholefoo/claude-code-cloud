@@ -3,7 +3,15 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
-from redblue.video.clients import Firecrawl, MissingKey, Pexels, Tavily
+from redblue.video.clients import (
+    Firecrawl,
+    GoogleTrends,
+    MissingKey,
+    Pexels,
+    Reddit,
+    Tavily,
+    _parse_traffic,
+)
 from redblue.video.pipeline import _topic
 from redblue.video.render import build_ass
 from redblue.video.schemas import Beat, Brief, Script, Source, TrendSignal
@@ -36,7 +44,8 @@ def test_scoring_prefers_fast_fresh_relevant():
         published_at=NOW - timedelta(hours=10),
     )
     ranked = [s.title for s, _, _ in score_all([slow, off, fast], "AI chips", now=NOW)]
-    assert ranked[0] == fast.title and ranked[-1] == slow.title
+    # Relevant and fast wins; off-niche ranks last however viral it is.
+    assert ranked == [fast.title, slow.title, off.title]
     _, score, parts = score_all([fast], "AI chips", now=NOW)[0]
     assert 0 < score <= 100 and set(parts) == {"velocity", "freshness", "relevance", "opportunity"}
 
@@ -99,6 +108,14 @@ def test_fallbacks_produce_valid_cited_script():
 def test_clients_require_keys_and_refuse_video_platforms():
     with pytest.raises(MissingKey):
         Tavily(None)
+    with pytest.raises(MissingKey):
+        Reddit(None, "ua")
+    r = Reddit(("id", "secret"), "ua")
+    for sub, sort in (("../admin", "hot"), ("tech", "controversial"), ("a b", "hot")):
+        with pytest.raises(ValueError):
+            r.listing(sub, sort)
+    with pytest.raises(ValueError):
+        GoogleTrends().trending("US&x=1")
     fc = Firecrawl("k")
     for url in ("https://www.youtube.com/watch?v=x", "https://www.tiktok.com/@a/video/1"):
         with pytest.raises(ValueError):
@@ -136,3 +153,49 @@ def test_ass_escapes_override_tags():
 def test_topic_cleanup():
     assert _topic("New AI chip explained | Tech Channel") == "New AI chip explained"
     assert _topic("#shorts Big news today") == "Big news today"
+
+
+@pytest.mark.parametrize(
+    "text,value",
+    [
+        ("50,000+", 50_000),
+        ("2K+", 2_000),
+        ("1M+", 1_000_000),
+        ("200+", 200),
+        ("", None),
+        ("lots", None),
+    ],
+)
+def test_parse_traffic(text, value):
+    assert _parse_traffic(text) == value
+
+
+def test_google_trends_rejects_xml_entity_attacks():
+    import httpx
+    from defusedxml.common import DefusedXmlException
+
+    bomb = (
+        b'<?xml version="1.0"?><!DOCTYPE r [<!ENTITY a "aaaa"><!ENTITY b "&a;&a;&a;">]>'
+        b"<rss><channel><item><title>&b;</title></item></channel></rss>"
+    )
+    http = httpx.Client(
+        transport=httpx.MockTransport(lambda req: httpx.Response(200, content=bomb))
+    )
+    with pytest.raises(DefusedXmlException):
+        GoogleTrends(http).trending("US")
+
+
+def test_reddit_reach_estimate_feeds_velocity():
+    from redblue.video.scoring import reach
+
+    sig = TrendSignal(
+        source="reddit",
+        title="t",
+        topic="t",
+        likes=100,
+        comments=50,
+        published_at=NOW - timedelta(hours=2),
+    )
+    assert reach(sig) == (100 + 2 * 50) * 40
+    ranked = score_all([sig], "t", now=NOW)
+    assert ranked[0][2]["velocity"] > 0.5

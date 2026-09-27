@@ -65,6 +65,8 @@ def index(request: Request, db: DB, user: Writer) -> HTMLResponse:
     )
     vs = get_video_settings()
     keys = {k: bool(vs.key(k)) for k in ("youtube", "tavily", "firecrawl", "pexels", "elevenlabs")}
+    keys["reddit"] = bool(vs.reddit_credentials and vs.subreddits)
+    keys["google_trends"] = True  # public RSS feed, no key
     return _render(request, "video_index.html", user, trends=trends, projects=projects, keys=keys)
 
 

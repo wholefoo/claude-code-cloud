@@ -42,12 +42,18 @@ class Pipeline:
     def sweep(self, db: Session) -> list[Trend]:
         signals: list[TrendSignal] = []
         notes = []
-        for name, fn in (("youtube", self._youtube), ("tavily", self._tavily)):
+        sources = (
+            ("youtube", self._youtube),
+            ("tavily", self._tavily),
+            ("reddit", self._reddit),
+            ("google_trends", self._google_trends),
+        )
+        for name, fn in sources:
             try:
                 signals += fn()
             except clients.MissingKey as exc:
                 notes.append(str(exc))
-            except httpx.HTTPError as exc:
+            except (httpx.HTTPError, ValueError) as exc:
                 notes.append(f"{name} failed: {exc}")
         for n in notes:
             log.info("sweep: %s", n)
@@ -76,6 +82,16 @@ class Pipeline:
 
     def _tavily(self) -> list[TrendSignal]:
         return clients.Tavily(self.s.key("tavily"), self.http).trend_signals(self.s.niche)
+
+    def _reddit(self) -> list[TrendSignal]:
+        if not self.s.subreddits:
+            raise clients.MissingKey("Set RB_VIDEO_SUBREDDITS to read Reddit.")
+        reddit = clients.Reddit(self.s.reddit_credentials, self.s.reddit_user_agent, self.http)
+        return reddit.trend_signals(self.s.subreddits)
+
+    def _google_trends(self) -> list[TrendSignal]:
+        geo = self.s.google_trends_geo or self.s.region
+        return clients.GoogleTrends(self.http).trending(geo)
 
     # ------------------------------------------------------------------ 2. project + brief
 

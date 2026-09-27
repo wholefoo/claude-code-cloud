@@ -16,7 +16,12 @@ def test_full_pipeline_with_mocked_apis(platform, vsettings, media_files):
     pipe = Pipeline(platform, vsettings, _vconf.fake_apis(media_files, calls))
     with platform.db.session() as db:
         trends = pipe.sweep(db)
-        assert len(trends) == 4  # 2 YouTube (search + popular) + 2 Tavily
+        by_source = {}
+        for t in trends:
+            by_source[t.source] = by_source.get(t.source, 0) + 1
+        # 2 YouTube (search + popular), 2 Tavily, 2 Reddit (rising + hot; stickied and NSFW
+        # skipped), 2 Google Trends.
+        assert by_source == {"youtube": 2, "tavily": 2, "reddit": 2, "google_trends": 2}
         assert trends == sorted(trends, key=lambda t: -t.score) or True
         assert all(t.breakdown for t in trends)
         assert pipe.sweep(db) == []  # already-seen URLs are skipped
@@ -46,9 +51,9 @@ def test_full_pipeline_with_mocked_apis(platform, vsettings, media_files):
 
 
 def test_pipeline_without_keys_still_renders(platform, no_keys):
-    pipe = Pipeline(platform, no_keys)
+    pipe = Pipeline(platform, no_keys, _vconf.offline())
     with platform.db.session() as db:
-        assert pipe.sweep(db) == []
+        assert pipe.sweep(db) == []  # Google Trends needs no key; offline here
         p = pipe.start_project(db, topic="Solid-state batteries")
         pipe.run(db, p)
         assert p.status == "review" and Path(p.render_path).exists()
@@ -58,7 +63,7 @@ def test_pipeline_without_keys_still_renders(platform, no_keys):
 def test_problems_block_rendering(platform, no_keys):
     from redblue.video.schemas import Script
 
-    pipe = Pipeline(platform, no_keys)
+    pipe = Pipeline(platform, no_keys, _vconf.offline())
     with platform.db.session() as db:
         p = pipe.start_project(db, topic="Topic")
         pipe.research(db, p)
@@ -159,3 +164,20 @@ def test_admin_flow(tmp_path, monkeypatch):
     with app.state.rb.db.session() as db:
         assert db.query(Trend).count() == 0
     vconfig.get_video_settings.cache_clear()
+
+
+def test_reddit_and_google_trends_signals(platform, vsettings, media_files):
+    calls = []
+    pipe = Pipeline(platform, vsettings, _vconf.fake_apis(media_files, calls))
+    with platform.db.session() as db:
+        trends = pipe.sweep(db)
+    reddit = [t for t in trends if t.source == "reddit"]
+    assert {t.signal["likes"] for t in reddit} == {1800}
+    assert all(t.url.startswith("https://www.reddit.com/r/hardware/") for t in reddit)
+    assert not any("NSFW" in t.title or "rules" in t.title for t in trends)
+    assert sum(c.endswith("/api/v1/access_token") for c in calls) == 1  # token reused
+    gt = {t.title: t for t in trends if t.source == "google_trends"}
+    assert gt["ai chip"].signal["views"] == 50_000
+    assert "Chip maker unveils" in gt["ai chip"].signal["snippet"]
+    # The niche ("AI chips") makes the relevant search outrank the bigger unrelated one.
+    assert gt["ai chip"].score > gt["football scores"].score
