@@ -74,6 +74,7 @@ def _import_models() -> None:
         "redblue.cms.models",
         "redblue.growth.models",
         "redblue.observe.models",
+        "redblue.video.models",
     ):
         try:
             importlib.import_module(mod)

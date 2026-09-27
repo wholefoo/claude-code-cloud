@@ -8,7 +8,7 @@ COPY packages ./packages
 COPY admin ./admin
 RUN pip install ./packages/core[postgres,ai] ./packages/cms ./packages/templates \
       ./packages/growth ./packages/observe ./packages/gate ./packages/builder ./admin \
-      ./packages/platform ./packages/cli
+      ./packages/platform ./packages/video ./packages/cli
 WORKDIR /srv/site
 RUN mkdir -p /srv/site/media && chown -R redblue:redblue /srv/site
 USER redblue

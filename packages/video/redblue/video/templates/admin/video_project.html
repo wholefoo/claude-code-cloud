@@ -1,0 +1,53 @@
+{% extends "admin/base.html" %}
+{% block title %}{{ project.topic }}{% endblock %}
+{% block main %}
+<p><a href="/admin/video">← Video</a></p>
+<div class="rb-row"><h1>{{ project.topic }}</h1><span class="rb-status-pill">{{ project.status }}</span></div>
+{% if project.problems %}<div class="rb-error" role="alert"><p><strong>Fix before rendering:</strong></p><ul>{% for x in project.problems %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+<div class="rb-editor">
+<div>
+  <section class="rb-card"><h2>1. Brief</h2>
+  {% if project.brief %}
+    <p><strong>Angle:</strong> {{ project.brief.angle }}<br><strong>Audience:</strong> {{ project.brief.audience }}</p>
+    <p><strong>Hooks:</strong></p><ul>{% for h in project.brief.hooks %}<li>{{ h }}</li>{% endfor %}</ul>
+    <p><strong>Facts:</strong></p><ul>{% for f in project.brief.facts %}<li>{{ f.claim }} <span class="rb-muted">[{{ f.source }}]</span></li>{% else %}<li class="rb-muted">No sourced facts: add sources (Tavily key) or edit the script by hand.</li>{% endfor %}</ul>
+    {% if project.brief.gaps %}<p class="rb-callout rb-callout--warning">{{ project.brief.gaps }}</p>{% endif %}
+    <p><strong>Sources:</strong></p><ol start="0">{% for s in project.brief.sources %}<li><a href="{{ s.url }}" rel="noopener noreferrer" target="_blank">{{ s.title }}</a></li>{% endfor %}</ol>
+  {% else %}<p class="rb-muted">Not researched yet.</p>{% endif %}
+  </section>
+  <section class="rb-card"><h2>2. Script</h2>
+  {% if project.script %}
+    <form class="rb-form rb-form--wide" method="post" action="/admin/video/projects/{{ project.id }}/script"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Script (JSON: beats cite brief sources by index) <textarea name="script" rows="22" class="rb-code-input" spellcheck="false">{{ script_json }}</textarea></label>
+    <button class="rb-btn">Save script</button></form>
+  {% else %}<p class="rb-muted">No script yet.</p>{% endif %}
+  </section>
+  {% if project.render_path %}
+  <section class="rb-card"><h2>3. Preview</h2>
+    <video controls preload="metadata" width="360" src="/admin/video/projects/{{ project.id }}/video.mp4"></video>
+    <p><a class="rb-btn" href="/admin/video/projects/{{ project.id }}/video.mp4" download>Download MP4</a></p>
+    <label>Upload description (sources and credits) <textarea rows="8" readonly>{{ upload_text }}</textarea></label>
+  </section>
+  {% endif %}
+</div>
+<aside class="rb-editor__side">
+  <section class="rb-card"><h2>Pipeline</h2>
+    {% for action, label in [("research", "Research brief"), ("script", "Write script"), ("render", "Render video")] %}
+    <form method="post" action="/admin/video/projects/{{ project.id }}/step"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rb-btn{% if (action == 'research' and not project.brief) or (action == 'script' and project.brief and not project.script) or (action == 'render' and project.script and not project.render_path) %} rb-btn--primary{% endif %}" name="action" value="{{ action }}">{{ label }}</button></form>
+    {% endfor %}
+    <p class="rb-muted">Rendering takes a little while; stay on the page.</p>
+  </section>
+  {% if project.status == "review" and user.has_role(Role.editor) %}
+  <section class="rb-card"><h2>Review</h2>
+    <form method="post" action="/admin/video/projects/{{ project.id }}/review"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Note <input name="note"></label>
+      <button class="rb-btn rb-btn--primary" name="decision" value="approve">Approve</button>
+      <button class="rb-btn" name="decision" value="reject">Reject</button></form>
+    <p class="rb-muted">Check facts against the sources and that every clip is licensed.</p>
+  </section>
+  {% endif %}
+  {% if project.review_note %}<section class="rb-card"><h2>Review note</h2><p>{{ project.review_note }}</p></section>{% endif %}
+  {% if project.assets %}<section class="rb-card"><h2>Assets &amp; licenses</h2><ul>{% for a in project.assets %}<li>{{ a.kind }}: {{ a.license }}{% if a.source_url %} (<a href="{{ a.source_url }}" rel="noopener noreferrer" target="_blank">source</a>){% endif %}</li>{% endfor %}</ul></section>{% endif %}
+</aside>
+</div>
+{% endblock %}

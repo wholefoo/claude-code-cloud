@@ -1,0 +1,30 @@
+{% extends "admin/base.html" %}
+{% block title %}Video{% endblock %}
+{% block main %}
+<div class="rb-row"><h1>Trending video</h1>
+<form method="post" action="/admin/video/sweep"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rb-btn rb-btn--primary">Sweep trends now</button></form></div>
+<p class="rb-muted">Niche: <strong>{{ vs.niche }}</strong>{% if vs.keywords %} · keywords: {{ vs.keywords | join(", ") }}{% endif %}. Signals come from official APIs and the open web; other creators' videos are never downloaded. Every render needs human approval, and nothing is posted automatically.</p>
+<p>{% for k, ok in keys.items() %}<span class="rb-status-pill{% if ok %} rb-status-pill--published{% endif %}">{{ k }}: {{ "set" if ok else "missing" }}</span> {% endfor %}</p>
+<div class="rb-two">
+<section>
+<h2>Ranked trends</h2>
+<table class="rb-table"><thead><tr><th scope="col">Score</th><th scope="col">Trend</th><th scope="col">Why</th><th scope="col"></th></tr></thead><tbody>
+{% for t in trends %}<tr>
+<td><strong>{{ t.score }}</strong></td>
+<td>{% if t.url %}<a href="{{ t.url }}" rel="noopener noreferrer" target="_blank">{{ t.title }}</a>{% else %}{{ t.title }}{% endif %}<br><span class="rb-muted">{{ t.source }}{% if t.signal.views %} · {{ "{:,}".format(t.signal.views) }} views{% endif %}</span></td>
+<td class="rb-muted">{% for k, v in t.breakdown.items() %}{{ k }} {{ (v * 100) | round | int }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+<td><form method="post" action="/admin/video/projects"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="trend_id" value="{{ t.id }}"><button class="rb-btn">Make video</button></form>
+<form method="post" action="/admin/video/trends/{{ t.id }}/dismiss"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rb-link">dismiss</button></form></td>
+</tr>{% else %}<tr><td colspan="4" class="rb-muted">No trends yet. Set API keys and sweep, or start from a topic.</td></tr>{% endfor %}
+</tbody></table>
+</section>
+<section>
+<h2>Start from a topic</h2>
+<form class="rb-form" method="post" action="/admin/video/projects"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Topic <input name="topic" required maxlength="300" placeholder="New EU AI Act rules for startups"></label><button class="rb-btn rb-btn--primary">Create project</button></form>
+<h2>Projects</h2>
+<table class="rb-table"><tbody>
+{% for p in projects %}<tr><td><a href="/admin/video/projects/{{ p.id }}">{{ p.topic }}</a></td><td><span class="rb-status-pill">{{ p.status }}</span></td></tr>{% else %}<tr><td class="rb-muted">No projects yet.</td></tr>{% endfor %}
+</tbody></table>
+</section>
+</div>
+{% endblock %}
