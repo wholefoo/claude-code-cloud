@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% from "cms/blocks.html" import render_blocks %}
+{% block main %}
+{% set kinds = {"contact": "contact", "waitlist": "waitlist", "newsletter_signup": "newsletter", "lead_magnet": "lead_magnet"} %}
+<div class="rb-container rb-prose">
+  {% include "partials/breadcrumbs.html" %}
+  <h1>{{ page.title }}</h1>
+  {% if page.summary %}<p class="rb-lede">{{ page.summary }}</p>{% endif %}
+  {{ render_blocks(page.blocks, ctx) }}
+  {% if not (page.blocks | selectattr("type", "equalto", "form") | list) %}
+    {% set form = {"kind": kinds.get(page_type.key, "contact"), "button_label": "Send" if page_type.key == "contact" else "Sign up", "lead_magnet_key": page.data.lead_magnet_key} %}
+    {% include "partials/form.html" %}
+  {% endif %}
+</div>
+{% endblock %}

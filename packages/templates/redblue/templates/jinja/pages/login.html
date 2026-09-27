@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block main %}
+<div class="rb-container rb-narrow">
+  <h1>{{ page.title or "Sign in" }}</h1>
+  {% if page.error %}<p class="rb-error" role="alert">{{ page.error }}</p>{% endif %}
+  <form method="post" action="{{ page.action or '/admin/login' }}" class="rb-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="next" value="{{ page.next or '' }}">
+    <label>Email <input name="email" type="email" autocomplete="username" required></label>
+    <label>Password <input name="password" type="password" autocomplete="current-password" required minlength="10"></label>
+    <button class="rb-btn rb-btn--primary" type="submit">Sign in</button>
+  </form>
+  {% for p in page.oauth or [] %}<p><a class="rb-btn" href="/auth/{{ p }}/start">Continue with {{ p | title }}</a></p>{% endfor %}
+</div>
+{% endblock %}

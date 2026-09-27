@@ -1,0 +1,9 @@
+<footer class="rb-footer">
+  <div class="rb-container">
+    {% include "partials/form_newsletter_inline.html" ignore missing %}
+    <nav aria-label="Footer"><ul class="rb-footer__links">
+      {% for item in site.footer_links %}<li><a href="{{ item.path }}">{{ item.label }}</a></li>{% endfor %}
+    </ul></nav>
+    <p class="rb-muted">© {{ site.year }} {{ site.organization_name or site.site_name }}</p>
+  </div>
+</footer>

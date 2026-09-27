@@ -1,0 +1,7 @@
+# RedBlue gate config for the vulnerable demo. There is intentionally no target URL
+# option: the gate launches this app itself (in-process) and only scans that preview.
+stack: fastapi
+app: app:app
+severity_threshold: high
+scanners:
+  pip_audit: false   # unpinned demo requirements

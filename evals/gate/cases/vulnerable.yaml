@@ -1,0 +1,99 @@
+# Each case is a small file; `expect` lists rule ids that must be reported (true positives).
+- name: sqli-fstring-sqlite
+  file: app.py
+  expect: [RB-SQLI]
+  code: |
+    def search(db, q):
+        return db.execute(f"SELECT * FROM products WHERE name = '{q}'").fetchall()
+- name: sqli-format-sqlalchemy
+  file: app.py
+  expect: [RB-SQLI]
+  code: |
+    from sqlalchemy import text
+    def get(session, uid):
+        return session.execute(text("SELECT * FROM users WHERE id = {}".format(uid)))
+- name: cmd-shell-true
+  file: app.py
+  expect: [RB-CMDI]
+  code: |
+    import subprocess
+    def ping(host):
+        subprocess.run(f"ping -c 1 {host}", shell=True)
+- name: yaml-load
+  file: app.py
+  expect: [RB-YAML-LOAD]
+  code: |
+    import yaml
+    def parse(body):
+        return yaml.load(body, Loader=yaml.Loader)
+- name: pickle-loads
+  file: app.py
+  expect: [RB-PICKLE]
+  code: |
+    import pickle
+    def restore(blob):
+        return pickle.loads(blob)
+- name: eval-input
+  file: app.py
+  expect: [RB-EVAL]
+  code: |
+    def calc(expr):
+        return eval(expr)
+- name: tls-verify-off
+  file: app.py
+  expect: [RB-TLS-VERIFY]
+  code: |
+    import httpx
+    def fetch():
+        return httpx.get("https://api.example.com", verify=False)
+- name: hardcoded-secret
+  file: settings.py
+  expect: [RB-SECRET]
+  code: |
+    STRIPE_SECRET_KEY = "Hx4Km9Rq2Wv7Lp1Zn8Tc3Bj6Fd5Gs0Yu"
+- name: open-redirect
+  file: app.py
+  expect: [RB-OPEN-REDIRECT]
+  code: |
+    from fastapi import FastAPI
+    from fastapi.responses import RedirectResponse
+    app = FastAPI()
+    @app.get("/go")
+    def go(next: str):
+        return RedirectResponse(next)
+- name: html-response-fstring
+  file: app.py
+  expect: [RB-XSS-HTMLRESPONSE]
+  code: |
+    from fastapi import FastAPI
+    from fastapi.responses import HTMLResponse
+    app = FastAPI()
+    @app.get("/hello")
+    def hello(name: str):
+        return HTMLResponse(f"<h1>Hello {name}</h1>")
+- name: cors-wildcard-credentials
+  file: app.py
+  expect: [RB-CORS]
+  code: |
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+    app = FastAPI()
+    app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True)
+- name: jinja-safe
+  file: templates/comment.html
+  expect: [RB-JINJA-SAFE]
+  code: |
+    <p>{{ comment.body|safe }}</p>
+- name: debug-true
+  file: app.py
+  expect: [RB-DEBUG]
+  code: |
+    from fastapi import FastAPI
+    app = FastAPI(debug=True)
+- name: weak-password-hash
+  file: auth.py
+  expect: [RB-WEAK-HASH]
+  code: |
+    import hashlib
+    def hash_password(password):
+        return hashlib.md5(password.encode()).hexdigest()

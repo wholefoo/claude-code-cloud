@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block main %}
+<div class="rb-container">
+  {% include "partials/breadcrumbs.html" %}
+  <h1>{{ page.title }}</h1>
+  <nav class="rb-az" aria-label="Jump to letter"><ul>{% for l in page.letters %}<li><a href="#letter-{{ l }}">{{ l }}</a></li>{% endfor %}</ul></nav>
+  {% for l in page.letters %}
+  <section id="letter-{{ l }}"><h2>{{ l }}</h2><dl class="rb-glossary">
+  {% for it in page["items"] if it.title[:1] | upper == l %}
+    <dt><a href="{{ it.url }}">{{ it.title }}</a></dt><dd>{{ it.data.short_definition or it.summary }}</dd>
+  {% endfor %}
+  </dl></section>
+  {% endfor %}
+</div>
+{% endblock %}

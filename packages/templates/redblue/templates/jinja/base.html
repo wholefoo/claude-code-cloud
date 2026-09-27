@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="{{ page.locale or site.default_locale }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ meta.title }}</title>
+{% if meta.description %}<meta name="description" content="{{ meta.description }}">{% endif %}
+<link rel="canonical" href="{{ meta.canonical }}">
+{% if meta.noindex %}<meta name="robots" content="noindex, follow">{% endif %}
+{% for alt in meta.alternates %}<link rel="alternate" hreflang="{{ alt.hreflang }}" href="{{ alt.href }}">
+{% endfor %}
+<meta property="og:type" content="{{ meta.og_type }}">
+<meta property="og:title" content="{{ page.title }}">
+{% if meta.description %}<meta property="og:description" content="{{ meta.description }}">{% endif %}
+<meta property="og:url" content="{{ meta.canonical }}">
+<meta property="og:site_name" content="{{ site.site_name }}">
+<meta property="og:image" content="{{ site.base_url }}{{ meta.og_image }}">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="alternate" type="application/rss+xml" title="{{ site.site_name }}" href="/feed.xml">
+<link rel="stylesheet" href="/_rb/tokens.css">
+<link rel="stylesheet" href="/static/rb/site.css">
+<meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false,"selfRequestsOnly":true}'>
+<script type="application/ld+json" nonce="{{ nonce }}">{{ jsonld | jsonld }}</script>
+<script src="/static/rb/htmx.min.js" defer nonce="{{ nonce }}"></script>
+<script src="/static/rb/rb.js" defer nonce="{{ nonce }}"></script>
+{% block head %}{% endblock %}
+</head>
+<body class="rb-page rb-page--{{ page_type.key }}" hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}' data-rb-page="{{ page.url }}"{% if experiments %} data-rb-exp='{{ experiments | tojson }}'{% endif %}>
+<a class="rb-skip" href="#main">Skip to content</a>
+{% include "partials/header.html" %}
+<main id="main" class="rb-main" tabindex="-1">
+{% block main %}{% endblock %}
+</main>
+{% include "partials/footer.html" %}
+</body>
+</html>

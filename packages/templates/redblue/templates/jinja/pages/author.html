@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block main %}
+<div class="rb-container">
+  {% include "partials/breadcrumbs.html" %}
+  <header class="rb-author">
+    <h1>{{ page.author.name }}</h1>
+    {% if page.author.credentials %}<p class="rb-muted">{{ page.author.credentials }}</p>{% endif %}
+    {% if page.author.bio %}<p>{{ page.author.bio }}</p>{% endif %}
+  </header>
+  <h2>Articles</h2>
+  {% include "partials/cards.html" %}
+</div>
+{% endblock %}

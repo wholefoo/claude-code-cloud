@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% from "cms/blocks.html" import render_blocks %}
+{% block main %}
+<div class="rb-container rb-prose">
+  <h1>{{ page.title }}</h1>
+  {% if status %}
+  <p class="rb-status rb-status--{{ 'ok' if status.all_ok else 'down' }}">{{ "All systems operational" if status.all_ok else "Some checks are failing" }}</p>
+  <table><thead><tr><th scope="col">Check</th><th scope="col">Status</th><th scope="col">Last checked</th></tr></thead><tbody>
+  {% for c in status.checks %}<tr><td>{{ c.path }}</td><td>{{ "Up" if c.ok else "Down" }}</td><td>{{ c.ts }}</td></tr>{% endfor %}
+  </tbody></table>
+  {% else %}<p class="rb-muted">No status data yet.</p>{% endif %}
+  {{ render_blocks(page.blocks, ctx) }}
+</div>
+{% endblock %}

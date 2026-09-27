@@ -1,0 +1,17 @@
+<header class="rb-header">
+  <div class="rb-container rb-header__inner">
+    <a class="rb-brand" href="/">{{ site.site_name }}</a>
+    <nav aria-label="Main">
+      <ul class="rb-nav">
+        {% for item in site.nav %}
+        <li><a href="{{ item.path }}"{% if page.url == item.path %} aria-current="page"{% endif %}>{{ item.label }}</a></li>
+        {% endfor %}
+      </ul>
+    </nav>
+    <form class="rb-search" action="/search" method="get" role="search">
+      <label class="rb-sr" for="rb-q">Search</label>
+      <input id="rb-q" name="q" type="search" placeholder="Search" value="{{ page.query or '' }}">
+    </form>
+    <button class="rb-theme" type="button" data-rb-theme aria-label="Toggle dark mode">◐</button>
+  </div>
+</header>

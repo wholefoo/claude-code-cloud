@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% from "cms/blocks.html" import render_blocks %}
+{% block main %}
+<div class="rb-container rb-prose rb-message">
+  <h1>{{ page.title }}</h1>
+  <p class="rb-lede">{{ page.message or page.summary }}</p>
+  {{ render_blocks(page.blocks or [], ctx) }}
+  {% if page_type.key == "not_found" %}
+  <form action="/search" method="get" role="search"><label for="nf-q">Search the site</label> <input id="nf-q" name="q" type="search"> <button class="rb-btn" type="submit">Search</button></form>
+  <p><a href="/">Go to the home page</a></p>
+  {% endif %}
+</div>
+{% endblock %}

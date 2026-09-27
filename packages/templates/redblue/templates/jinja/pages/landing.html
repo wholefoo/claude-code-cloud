@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% from "cms/blocks.html" import render_blocks %}
+{% block main %}
+<section class="rb-hero rb-hero--{{ page_type.key }}">
+  <div class="rb-container">
+    {% include "partials/breadcrumbs.html" %}
+    <h1>{{ variant_text("hero_headline", page.title) if variant_text is defined else page.title }}</h1>
+    {% if page.summary %}<p class="rb-lede">{{ page.summary }}</p>{% endif %}
+  </div>
+</section>
+<div class="rb-container rb-stack">{{ render_blocks(page.blocks, ctx) }}</div>
+{% endblock %}

@@ -1,0 +1,18 @@
+{#- Platform forms. Handled by redblue.growth at /_rb/forms/{kind}. -#}
+<form class="rb-form" method="post" action="/_rb/forms/{{ form.kind }}" hx-post="/_rb/forms/{{ form.kind }}" hx-swap="outerHTML">
+  {% if form.heading %}<h2>{{ form.heading }}</h2>{% endif %}
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  {% if form.lead_magnet_key %}<input type="hidden" name="lead_magnet" value="{{ form.lead_magnet_key }}">{% endif %}
+  <div class="rb-hp" aria-hidden="true"><label>Leave this empty <input name="website" tabindex="-1" autocomplete="off"></label></div>
+  {% if form.kind in ("contact", "lead_magnet", "waitlist") %}
+  <label>Name <input name="name" autocomplete="name" maxlength="200"{% if form.kind == "contact" %} required{% endif %}></label>
+  {% endif %}
+  <label>Email <input name="email" type="email" autocomplete="email" required maxlength="320"></label>
+  {% if form.kind == "contact" %}
+  <label>Message <textarea name="message" rows="5" required maxlength="5000"></textarea></label>
+  {% endif %}
+  {% if form.kind in ("newsletter", "lead_magnet", "waitlist") %}
+  <label class="rb-check"><input type="checkbox" name="consent" value="yes" required> Email me updates. I can unsubscribe at any time.</label>
+  {% endif %}
+  <button class="rb-btn rb-btn--primary" type="submit">{{ form.button_label or "Submit" }}</button>
+</form>

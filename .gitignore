@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+*.db
+*.sqlite3
+/media/
+.pytest_cache/
+.ruff_cache/
+.redblue/
+redblue.sarif
+redblue-report.md
+dist/
+build/

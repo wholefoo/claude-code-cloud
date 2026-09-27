@@ -1,0 +1,7 @@
+{% if page.crumbs and page.crumbs | length > 1 %}
+<nav class="rb-crumbs" aria-label="Breadcrumb"><ol>
+{% for name, path in page.crumbs %}
+  <li>{% if loop.last %}<span aria-current="page">{{ name }}</span>{% else %}<a href="{{ path }}">{{ name }}</a>{% endif %}</li>
+{% endfor %}
+</ol></nav>
+{% endif %}

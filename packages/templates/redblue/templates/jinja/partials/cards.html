@@ -1,0 +1,20 @@
+{% if page["items"] %}
+<ul class="rb-cards">
+{% for it in page["items"] %}
+  <li class="rb-card">
+    <h2 class="rb-card__title"><a href="{{ it.url }}">{{ it.title }}</a></h2>
+    {% if it.date %}<p class="rb-muted"><time datetime="{{ it.date.date().isoformat() }}">{{ it.date | datefmt }}</time></p>{% endif %}
+    {% if it.summary %}<p>{{ it.summary }}</p>{% endif %}
+    {% if it.data and it.data.price %}<p class="rb-price">{{ it.data.price }} {{ it.data.currency }}</p>{% endif %}
+  </li>
+{% endfor %}
+</ul>
+{% if page.page_num > 1 or page.has_next %}
+<nav class="rb-pager" aria-label="Pagination">
+  {% if page.page_num > 1 %}<a rel="prev" href="?page={{ page.page_num - 1 }}">← Newer</a>{% endif %}
+  {% if page.has_next %}<a rel="next" href="?page={{ page.page_num + 1 }}">Older →</a>{% endif %}
+</nav>
+{% endif %}
+{% else %}
+<p class="rb-muted">Nothing here yet.</p>
+{% endif %}

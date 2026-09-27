@@ -1,0 +1,91 @@
+{#- Block renderer. Autoescape is on; `inline` returns escaped-then-marked-up text. -#}
+{% macro render_blocks(blocks, ctx) -%}
+{% for b in blocks %}{{ render_block(b, ctx) }}{% endfor %}
+{%- endmacro %}
+
+{% macro render_block(b, ctx) -%}
+{% set t = b.type %}
+{% if t == "heading" %}
+<h{{ b.level or 2 }} id="{{ anchor_for(b) }}">{{ b.text }}</h{{ b.level or 2 }}>
+{% elif t == "paragraph" %}
+<p>{{ b.text | inline }}</p>
+{% elif t == "list" %}
+{% if b.ordered %}<ol>{% else %}<ul>{% endif %}
+{% for it in b["items"] %}<li>{{ it | inline }}</li>{% endfor %}
+{% if b.ordered %}</ol>{% else %}</ul>{% endif %}
+{% elif t == "image" %}
+{% set m = ctx.media(b) %}
+<figure class="rb-figure">
+  <img src="{{ m.src }}" alt="{{ '' if b.decorative else b.alt }}"{% if m.width %} width="{{ m.width }}" height="{{ m.height }}"{% endif %} loading="lazy" decoding="async">
+  {% if b.caption %}<figcaption>{{ b.caption }}</figcaption>{% endif %}
+</figure>
+{% elif t == "quote" %}
+<blockquote><p>{{ b.text }}</p>{% if b.cite %}<footer>— {{ b.cite }}</footer>{% endif %}</blockquote>
+{% elif t == "code" %}
+<pre class="rb-code"><code class="language-{{ b.language }}">{{ b.code }}</code></pre>
+{% elif t == "callout" %}
+<aside class="rb-callout rb-callout--{{ b.tone }}" role="note"><p>{{ b.text | inline }}</p></aside>
+{% elif t == "answer" %}
+{% set qid = "q-" ~ anchor_for({"text": b.question}) %}
+<section class="rb-answer" aria-labelledby="{{ qid }}">
+  <h2 id="{{ qid }}" class="rb-answer__q">{{ b.question }}</h2>
+  <p class="rb-answer__a"><strong>{{ b.answer }}</strong></p>
+  {% if b.detail %}<p>{{ b.detail | inline }}</p>{% endif %}
+</section>
+{% elif t == "faq" %}
+<section class="rb-faq">
+{% for it in b["items"] %}
+  <details{% if loop.first %} open{% endif %}><summary><h3>{{ it.question }}</h3></summary><div><p>{{ it.answer | inline }}</p></div></details>
+{% endfor %}
+</section>
+{% elif t == "howto" %}
+<section class="rb-howto">
+  <h2>{{ b.name }}</h2>
+  {% if b.supplies %}<p><strong>You'll need:</strong> {{ b.supplies | join(", ") }}</p>{% endif %}
+  <ol class="rb-steps">{% for st in b.steps %}<li><h3>{{ st.name }}</h3><p>{{ st.text | inline }}</p></li>{% endfor %}</ol>
+</section>
+{% elif t == "cta" %}
+<section class="rb-cta"><h2>{{ b.heading }}</h2>{% if b.text %}<p>{{ b.text }}</p>{% endif %}<a class="rb-btn rb-btn--primary" href="{{ b.button_url }}">{{ b.button_label }}</a></section>
+{% elif t == "embed" %}
+<div class="rb-embed">
+  {% if b.provider == "youtube" %}
+  <iframe src="https://www.youtube-nocookie.com/embed/{{ b.video_id }}" title="{{ b.title }}" loading="lazy" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>
+  {% else %}
+  <iframe src="https://player.vimeo.com/video/{{ b.video_id }}" title="{{ b.title }}" loading="lazy" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" sandbox="allow-scripts allow-same-origin allow-presentation"></iframe>
+  {% endif %}
+</div>
+{% elif t == "table" %}
+<div class="rb-table-wrap"><table>{% if b.caption %}<caption>{{ b.caption }}</caption>{% endif %}
+<thead><tr>{% for h in b.headers %}<th scope="col">{{ h }}</th>{% endfor %}</tr></thead>
+<tbody>{% for r in b.rows %}<tr>{% for c in r %}<td>{{ c | inline }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
+{% elif t == "divider" %}
+<hr>
+{% elif t == "features" %}
+<section class="rb-features">{% if b.heading %}<h2>{{ b.heading }}</h2>{% endif %}
+<ul class="rb-grid">{% for f in b["items"] %}<li class="rb-card"><h3>{% if f.url %}<a href="{{ f.url }}">{{ f.title }}</a>{% else %}{{ f.title }}{% endif %}</h3><p>{{ f.text }}</p></li>{% endfor %}</ul></section>
+{% elif t == "pricing" %}
+<section class="rb-pricing"><ul class="rb-grid">
+{% for p in b.plans %}
+<li class="rb-card{% if p.highlighted %} rb-card--highlight{% endif %}">
+  <h3>{{ p.name }}</h3>
+  <p class="rb-price"><span>{{ p.price }}</span>{% if p.period %} <small>/ {{ p.period }}</small>{% endif %}</p>
+  {% if p.description %}<p>{{ p.description }}</p>{% endif %}
+  <ul class="rb-checklist">{% for f in p.features %}<li>{{ f }}</li>{% endfor %}</ul>
+  <a class="rb-btn{% if p.highlighted %} rb-btn--primary{% endif %}" href="{{ p.cta_url }}">{{ p.cta_label }}</a>
+</li>
+{% endfor %}</ul></section>
+{% elif t == "testimonial" %}
+<figure class="rb-testimonial"><blockquote><p>{{ b.quote }}</p></blockquote>
+<figcaption>{{ b.author }}{% if b.role %}, {{ b.role }}{% endif %}{% if b.rating %} · <span aria-label="{{ b.rating }} out of 5 stars">{{ "★" * b.rating }}</span>{% endif %}{% if b.source_url %} · <a href="{{ b.source_url }}" rel="noopener">source</a>{% endif %}</figcaption></figure>
+{% elif t == "stats" %}
+<dl class="rb-stats">{% for s in b["items"] %}<div><dt>{{ s.label }}</dt><dd>{{ s.value }}</dd></div>{% endfor %}</dl>
+{% elif t == "form" %}
+{{ ctx.form(b) }}
+{% elif t == "comparison" %}
+<div class="rb-table-wrap"><table class="rb-compare"><thead><tr><th scope="col">Feature</th>{% for c in b.columns %}<th scope="col">{{ c }}</th>{% endfor %}</tr></thead>
+<tbody>{% for r in b.rows %}<tr><th scope="row">{{ r.feature }}</th>{% for v in r["values"] %}<td>{{ v }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
+{% if b.verdict %}<p class="rb-verdict"><strong>Verdict:</strong> {{ b.verdict | inline }}</p>{% endif %}
+{% elif t == "sources" %}
+<section class="rb-sources"><h2>Sources</h2><ol>{% for s in b["items"] %}<li><a href="{{ s.url }}" rel="noopener">{{ s.title }}</a></li>{% endfor %}</ol></section>
+{% endif %}
+{%- endmacro %}

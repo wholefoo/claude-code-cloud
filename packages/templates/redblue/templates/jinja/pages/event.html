@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% from "cms/blocks.html" import render_blocks %}
+{% block main %}
+<div class="rb-container rb-prose">
+  {% include "partials/breadcrumbs.html" %}
+  <h1>{{ page.title }}</h1>
+  <p class="rb-event-when"><time datetime="{{ page.data.start }}">{{ page.data.start | replace("T", " ") }}</time>{% if page.data.end %} – <time datetime="{{ page.data.end }}">{{ page.data.end | replace("T", " ") }}</time>{% endif %} · {{ "Online" if page.data.online else page.data.location }}</p>
+  {% if page.summary %}<p class="rb-lede">{{ page.summary }}</p>{% endif %}
+  {{ render_blocks(page.blocks, ctx) }}
+  <p><a class="rb-btn rb-btn--primary" href="{{ page.data.register_url }}" data-rb-goal="event_register">Register</a></p>
+</div>
+{% endblock %}

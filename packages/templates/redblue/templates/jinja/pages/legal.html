@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% from "cms/blocks.html" import render_blocks %}
+{% block main %}
+<div class="rb-container rb-prose">
+  <h1>{{ page.title }}</h1>
+  {% if page.modified_at %}<p class="rb-muted">Last updated <time datetime="{{ page.modified }}">{{ page.modified_at | datefmt }}</time></p>{% endif %}
+  {% include "partials/toc.html" %}
+  {{ render_blocks(page.blocks, ctx) }}
+</div>
+{% endblock %}
