@@ -47,6 +47,8 @@ PLATFORMS: dict[str, tuple[str, ...]] = {
     "tumblr": ("tumblr.com",),
     "vimeo": ("vimeo.com",),
     "twitch": ("twitch.tv",),  # recorded by hand (no upload API)
+    "dailymotion": ("dailymotion.com", "dai.ly"),
+    "rumble": ("rumble.com",),
     "other": (),
 }
 MIN_PEERS = 3  # mature videos on a platform before lift (vs. your median) is meaningful

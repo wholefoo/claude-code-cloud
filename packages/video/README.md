@@ -58,6 +58,8 @@ That's useful for testing, and you add keys as you go.
 | `BLUESKY_HANDLE` + `BLUESKY_APP_PASSWORD` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Upload an approved render, then post it with a second click | You upload it yourself |
 | `TUMBLR_CLIENT_ID` + `TUMBLR_CLIENT_SECRET` + `TUMBLR_REFRESH_TOKEN` + `RB_VIDEO_TUMBLR_BLOG` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Post an approved render to your blog (a draft by default) | You upload it yourself |
 | `VIMEO_ACCESS_TOKEN` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Upload an approved render to Vimeo (only you can watch it by default) | You upload it yourself |
+| `DAILYMOTION_API_KEY` + `DAILYMOTION_API_SECRET` + `DAILYMOTION_CHANNEL_ID` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Upload an approved render to Dailymotion (a draft by default) | You upload it yourself |
+| `RUMBLE_ACCESS_TOKEN` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Publish an approved render on Rumble after a second confirmation (Rumble has no drafts) | You upload it yourself |
 
 Settings (`RB_VIDEO_*`): `NICHE`, `KEYWORDS` (JSON list), `REGION`, `SUBREDDITS` (JSON list),
 `GOOGLE_TRENDS_GEO`, `REDDIT_USER_AGENT`, `OUTPUT_DIR`, `TARGET_SECONDS`, `TEMPLATE`
@@ -97,12 +99,12 @@ about something else (say, football scores) ranks below a smaller trend in your 
   upload description lists sources, credits and an AI-assistance note.
 - **Human in the loop.** Renders wait in review; approval only marks them ready for *you*
   to upload. Optional direct upload to YouTube, TikTok, Instagram, Facebook, LinkedIn, X,
-  Threads, Pinterest, Reddit, Bluesky, Tumblr and Vimeo exists, but it's off by default and every
+  Threads, Pinterest, Reddit, Bluesky, Tumblr, Vimeo, Dailymotion and Rumble exists, but it's off by default and every
   upload is a person pressing a button (or confirming in the CLI): no job, sweep or pipeline
   step ever uploads or publishes. YouTube uploads are private unless the person chooses
-  otherwise, TikTok, Facebook and Tumblr go to drafts by default, Vimeo uploads are "only
-  me" by default, and the others need a
-  second click to publish. Reddit posts go to one subreddit per render, chosen by the person each time.
+  otherwise, TikTok, Facebook, Tumblr and Dailymotion go to drafts by default, Vimeo uploads are
+  "only me" by default, Rumble (which has no drafts) needs a second confirmation, and the
+  others need a second click to publish. Reddit posts go to one subreddit per render, chosen by the person each time.
 
 ## Rendering
 
@@ -557,6 +559,48 @@ expire until you revoke them.
 
 ```bash
 export VIMEO_ACCESS_TOKEN=...
+```
+
+## Upload to Dailymotion (optional)
+
+Uploads the file, then creates the video on your channel with the visibility chosen up front:
+
+- **Draft (default):** nobody else can see it. Publish it in Dailymotion Studio, then
+  **Check status** (or the tracking job) notices and records the link.
+- **Private** (anyone with the link) or **Public:** needs a second confirmation; the link is
+  recorded once Dailymotion has encoded it.
+
+Tick **Made for kids** if it is (Dailymotion requires the flag). The category comes from
+`RB_VIDEO_DAILYMOTION_CATEGORY` (default `news`; e.g. `tech`, `lifestyle`, `videogames`).
+CLI: `redblue video dailymotion 12 -f 16:9 --visibility draft --tags "heat pumps,energy"`.
+
+**Setup.** In Dailymotion Studio, go to **Organization → API keys → Create API key** and
+choose a **Private API key**. Copy the key and secret, and your channel's id (the `x…` id in
+your channel's URL or Studio settings).
+
+```bash
+export DAILYMOTION_API_KEY=...
+export DAILYMOTION_API_SECRET=...
+export DAILYMOTION_CHANNEL_ID=x2abcd
+```
+
+RedBlue asks for a short-lived token with the `manage_videos` scope for each upload or
+status check; nothing is stored.
+
+## Upload to Rumble (optional)
+
+Rumble's Upload API publishes the video straight away (there's no draft or private option),
+so the button and `redblue video rumble 12 -f 16:9` always ask for a second confirmation
+that it will be public. Licensing is **Not for sale** by default; **Rumble only**
+(`--license rumble_only`) follows Rumble's licensing terms. The link Rumble returns is
+recorded (without its referral query) for tracking.
+
+**Setup.** Rumble doesn't offer self-serve API keys: email bd@rumble.com to request an
+Upload API access token for your account. Optionally set `RB_VIDEO_RUMBLE_CHANNEL_ID` (a
+number) to upload to one of your channels instead of your profile.
+
+```bash
+export RUMBLE_ACCESS_TOKEN=...
 ```
 
 ## Twitch

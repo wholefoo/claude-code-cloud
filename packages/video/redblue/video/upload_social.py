@@ -41,6 +41,7 @@ import hmac
 import ipaddress
 import logging
 import os
+import re
 import time
 from datetime import timedelta
 from pathlib import Path
@@ -76,6 +77,8 @@ NAMES = {
     "bluesky": "Bluesky",
     "tumblr": "Tumblr",
     "vimeo": "Vimeo",
+    "dailymotion": "Dailymotion",
+    "rumble": "Rumble",
 }
 
 
@@ -101,6 +104,7 @@ PRIVACY_LABELS = {
     "nobody": "Only me",
     "unlisted": "Anyone with the link",
     "anybody": "Anyone",
+    "public": "Anyone",
 }
 
 
@@ -120,6 +124,12 @@ def available(s: VideoSettings) -> dict[str, bool]:
         "bluesky": s.upload_enabled and s.bluesky_credentials is not None,
         "tumblr": s.upload_enabled and s.tumblr_credentials is not None and bool(s.tumblr_blog),
         "vimeo": s.upload_enabled and s.vimeo_access_token is not None,
+        "dailymotion": (
+            s.upload_enabled
+            and s.dailymotion_credentials is not None
+            and bool(s.dailymotion_channel_id)
+        ),
+        "rumble": s.upload_enabled and s.rumble_access_token is not None,
         "pinterest": (
             s.upload_enabled and s.pinterest_credentials is not None and bool(s.pinterest_board_id)
         ),
@@ -312,6 +322,39 @@ class VimeoRequest(BaseModel):
     title: str = Field(default="", max_length=128)
     description: str = Field(default="", max_length=5000)
     privacy: Literal["nobody", "unlisted", "anybody"] = "nobody"
+
+    @field_validator("format")
+    @classmethod
+    def _format(cls, v: str) -> str:
+        return get_format(v).key
+
+
+class DailymotionRequest(BaseModel):
+    format: str = "16:9"
+    title: str = Field(default="", max_length=255)
+    description: str = Field(default="", max_length=3000)
+    tags: list[str] = Field(default_factory=list)
+    visibility: Literal["draft", "private", "public"] = "draft"
+    for_kids: bool = False
+
+    @field_validator("format")
+    @classmethod
+    def _format(cls, v: str) -> str:
+        return get_format(v).key
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def _tags(cls, v) -> list[str]:
+        items = v.split(",") if isinstance(v, str) else list(v or [])
+        tags = [str(t).strip().lstrip("#")[:50] for t in items]
+        return list(dict.fromkeys(t for t in tags if t))[:30]
+
+
+class RumbleRequest(BaseModel):
+    format: str = "16:9"
+    title: str = Field(default="", max_length=200)
+    description: str = Field(default="", max_length=5000)
+    license: Literal["none", "rumble_only"] = "none"
 
     @field_validator("format")
     @classmethod
@@ -677,6 +720,18 @@ def refresh(db: Session, up: Upload, s: VideoSettings, http: httpx.Client | None
                 _record(db, up, str(st.get("link") or up.meta.get("link", "")))
             else:
                 up.status = "draft"  # only visible to the owner until they change it
+    elif up.platform == "dailymotion":
+        st = dailymotion_client(s, http).status(up.external_ref)
+        state = str(st.get("status", ""))
+        if state in ("rejected", "deleted", "encoding_error"):
+            up.status = "failed"
+            up.error = f"Dailymotion: the video is {state.replace('_', ' ')}"
+        elif st.get("published") and state == "published":
+            up.status = "published"
+            up.privacy = "unlisted" if st.get("private") else "public"
+            _record(db, up, str(st.get("url") or ""))
+        elif not st.get("published") and state == "ready":
+            up.status = "draft"  # encoded, waiting for the owner to publish it
     elif up.platform == "threads" and up.external_ref:
         data = threads_client(s, http).status(up.external_ref)
         code = data.get("status", "")
@@ -1416,4 +1471,122 @@ def upload_vimeo(
     db.add(up)
     db.flush()
     log.info("vimeo video %s (%s) for project %s by %s", video_id, req.privacy, p.id, confirmed_by)
+    return up
+
+
+# ---------------------------------------------------------------------- Dailymotion
+
+
+DAILYMOTION_PRIVACY = {"draft": "nobody", "private": "unlisted", "public": "public"}
+
+
+def dailymotion_client(s: VideoSettings, http: httpx.Client | None = None) -> clients.Dailymotion:
+    return clients.Dailymotion(s.dailymotion_credentials, s.dailymotion_channel_id or "", http)
+
+
+def upload_dailymotion(
+    db: Session,
+    p: VideoProject,
+    req: DailymotionRequest,
+    s: VideoSettings,
+    *,
+    confirmed_by: str,
+    confirmed: bool,
+    confirmed_public: bool = False,
+    http: httpx.Client | None = None,
+) -> Upload:
+    """Upload to Dailymotion as a draft by default (the person publishes it in Dailymotion
+    Studio). Private (link only) or public needs a second confirmation."""
+    path = _guard(db, p, s, "dailymotion", req.format, confirmed_by, confirmed)
+    if req.visibility != "draft" and not confirmed_public:
+        raise ValueError("Confirm that other people will be able to watch it on Dailymotion.")
+    if not re.fullmatch(r"[a-z]{2,20}", s.dailymotion_category):
+        raise ValueError("RB_VIDEO_DAILYMOTION_CATEGORY should be a category like news or tech.")
+    script = Script.model_validate(p.script) if p.script else None
+    video_id = dailymotion_client(s, http).upload(
+        path,
+        title=req.title or (script.title if script else p.topic)[:255],
+        description=req.description,
+        tags=req.tags,
+        category=s.dailymotion_category,
+        visibility=req.visibility,
+        for_kids=req.for_kids,
+    )
+    up = Upload(
+        project_id=p.id,
+        platform="dailymotion",
+        format=req.format,
+        mode=req.visibility,
+        status="processing",
+        external_ref=video_id,
+        privacy=DAILYMOTION_PRIVACY[req.visibility],
+        uploaded_by=confirmed_by[:200],
+        published_by=confirmed_by[:200] if req.visibility != "draft" else None,
+        meta={"for_kids": req.for_kids},
+    )
+    db.add(up)
+    db.flush()
+    log.info(
+        "dailymotion video %s (%s) for project %s by %s",
+        video_id,
+        req.visibility,
+        p.id,
+        confirmed_by,
+    )
+    return up
+
+
+# ---------------------------------------------------------------------- Rumble
+
+
+def rumble_client(s: VideoSettings, http: httpx.Client | None = None) -> clients.Rumble:
+    token = s.rumble_access_token.get_secret_value() if s.rumble_access_token else None
+    return clients.Rumble(token, http)
+
+
+def upload_rumble(
+    db: Session,
+    p: VideoProject,
+    req: RumbleRequest,
+    s: VideoSettings,
+    *,
+    confirmed_by: str,
+    confirmed: bool,
+    confirmed_public: bool = False,
+    http: httpx.Client | None = None,
+) -> Upload:
+    """Upload to Rumble. Rumble's API publishes on upload (there's no draft), so it always
+    needs the person's second confirmation that the video will be public."""
+    path = _guard(db, p, s, "rumble", req.format, confirmed_by, confirmed)
+    if not confirmed_public:
+        raise ValueError("Confirm that the video will be public on Rumble right away.")
+    if s.rumble_channel_id and not s.rumble_channel_id.isdigit():
+        raise ValueError("RB_VIDEO_RUMBLE_CHANNEL_ID should be a number.")
+    script = Script.model_validate(p.script) if p.script else None
+    video_id, url = rumble_client(s, http).upload(
+        path,
+        title=req.title or (script.title if script else p.topic)[:200],
+        description=req.description or (script.title if script else p.topic),
+        license=req.license,
+        channel_id=s.rumble_channel_id,
+        guid=f"redblue-{p.id}-{get_format(req.format).slug}",
+    )
+    up = Upload(
+        project_id=p.id,
+        platform="rumble",
+        format=req.format,
+        mode=req.license,
+        status="published",
+        external_ref=video_id,
+        privacy="public",
+        uploaded_by=confirmed_by[:200],
+        published_by=confirmed_by[:200],
+        meta={},
+    )
+    db.add(up)
+    db.flush()
+    if url:
+        parts = urlsplit(url)  # drop Rumble's referral query (mref=…)
+        _record(db, up, f"https://{parts.hostname}{parts.path}")
+    log.info("rumble video %s for project %s by %s", video_id, p.id, confirmed_by)
     return up

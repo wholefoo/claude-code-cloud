@@ -1348,6 +1348,170 @@ class Vimeo:
         return self._json(r)
 
 
+class Dailymotion:
+    """Dailymotion Partner API with a private API key (client credentials, scope
+    ``manage_videos``): get an upload URL, send the file there, then create the video on
+    your channel as a draft, private (link only) or public. The person picks which."""
+
+    TOKEN_URL = "https://partner.api.dailymotion.com/oauth/v1/token"  # noqa: S105  # nosec B105
+    API = "https://partner.api.dailymotion.com/rest"
+    _XID = re.compile(r"^x[0-9a-z]{2,20}$")
+
+    def __init__(
+        self,
+        credentials: tuple[str, str] | None,
+        channel_id: str,
+        client: httpx.Client | None = None,
+    ):
+        if not credentials or not channel_id:
+            raise MissingKey(
+                "Set DAILYMOTION_API_KEY, DAILYMOTION_API_SECRET and DAILYMOTION_CHANNEL_ID "
+                "to upload to Dailymotion."
+            )
+        if not self._XID.match(channel_id):
+            raise ValueError("DAILYMOTION_CHANNEL_ID should look like x2abcd.")
+        self.credentials, self.channel, self.http = credentials, channel_id, _client(client)
+        self._token: str | None = None
+
+    def _json(self, r: httpx.Response) -> dict:
+        try:
+            body = r.json() if r.content else {}
+        except ValueError:
+            body = {}
+        if r.status_code >= 400 or "error" in body:
+            err = body.get("error")
+            detail = (err.get("message") if isinstance(err, dict) else err) or r.status_code
+            raise PlatformError(f"Dailymotion: {detail}")
+        return body
+
+    def _auth(self) -> dict:
+        if self._token is None:
+            key, secret = self.credentials
+            body = self._json(
+                self.http.post(
+                    self.TOKEN_URL,
+                    data={
+                        "grant_type": "client_credentials",
+                        "client_id": key,
+                        "client_secret": secret,
+                        "scope": "manage_videos",
+                    },
+                )
+            )
+            if not body.get("access_token"):
+                raise PlatformError("Dailymotion didn't return an access token.")
+            self._token = body["access_token"]
+        return {"Authorization": f"Bearer {self._token}"}
+
+    def upload(
+        self,
+        path,
+        *,
+        title: str,
+        description: str,
+        tags: list[str],
+        category: str,
+        visibility: str,
+        for_kids: bool,
+    ) -> str:
+        """Returns the video id. ``visibility``: draft, private (link only) or public."""
+        if visibility not in ("draft", "private", "public"):
+            raise ValueError("Unsupported Dailymotion visibility.")
+        r = self.http.get(f"{self.API}/file/upload", headers=self._auth())
+        url = _https_host(self._json(r).get("upload_url", ""), ("dailymotion.com",))
+        r = self.http.post(  # pre-signed upload URL: no API token
+            url,
+            files={"file": (path.name, path.read_bytes(), "video/mp4")},
+            timeout=httpx.Timeout(600.0, connect=10.0),
+        )
+        file_url = self._json(r).get("url")
+        if not file_url:
+            raise PlatformError("Dailymotion didn't accept the file.")
+        r = self.http.post(
+            f"{self.API}/user/{self.channel}/videos",
+            headers=self._auth(),
+            data={
+                "url": file_url,
+                "title": title,
+                "description": description,
+                "tags": ",".join(tags),
+                "channel": category,
+                "published": "false" if visibility == "draft" else "true",
+                "private": "true" if visibility == "private" else "false",
+                "is_created_for_kids": "true" if for_kids else "false",
+            },
+        )
+        vid = str(self._json(r).get("id", ""))
+        if not self._XID.match(vid):
+            raise PlatformError("Dailymotion didn't return a video id.")
+        return vid
+
+    def status(self, video_id: str) -> dict:
+        if not self._XID.match(video_id):
+            raise ValueError("Invalid Dailymotion video id.")
+        r = self.http.get(
+            f"{self.API}/video/{video_id}",
+            headers=self._auth(),
+            params={"fields": "id,status,published,private,url"},
+        )
+        return self._json(r)
+
+
+class Rumble:
+    """Rumble's partner Upload API (``simple-upload.php``). Rumble issues the access token
+    on request (bd@rumble.com); the video is published on upload, so the caller must have a
+    person's confirmation that it may be public."""
+
+    URL = "https://rumble.com/api/simple-upload.php"
+    LICENSES = {"none": 0, "rumble_only": 6}
+
+    def __init__(self, token: str | None, client: httpx.Client | None = None):
+        if not token:
+            raise MissingKey("Set RUMBLE_ACCESS_TOKEN to upload to Rumble.")
+        self.token, self.http = token, _client(client)
+
+    def upload(
+        self,
+        path,
+        *,
+        title: str,
+        description: str,
+        license: str,
+        channel_id: str = "",
+        guid: str = "",
+    ) -> tuple[str, str]:
+        """Returns (video id, video URL)."""
+        if license not in self.LICENSES:
+            raise ValueError("Unsupported Rumble license.")
+        data = {
+            "access_token": self.token,
+            "title": title,
+            "description": description,
+            "license_type": str(self.LICENSES[license]),
+        }
+        if channel_id:
+            data["channel_id"] = channel_id
+        if guid:
+            data["guid"] = guid
+        r = self.http.post(
+            self.URL,
+            data=data,
+            files={"video": (path.name, path.read_bytes(), "video/mp4")},
+            timeout=httpx.Timeout(900.0, connect=10.0),
+        )
+        try:
+            body = r.json()
+        except ValueError:
+            body = {}
+        if r.status_code >= 400 or not body.get("success"):
+            errors = body.get("errors") or [f"HTTP {r.status_code}"]
+            raise PlatformError("Rumble: " + "; ".join(str(e) for e in errors)[:300])
+        vid, url = str(body.get("video_id", "")), str(body.get("url_monetized", ""))
+        if not re.fullmatch(r"[A-Za-z0-9]{2,20}", vid):
+            raise PlatformError("Rumble didn't return a video id.")
+        return vid, _https_host(url, ("rumble.com",)) if url else ""
+
+
 def _int(value) -> int | None:
     try:
         return int(value) if value is not None and value != "" else None

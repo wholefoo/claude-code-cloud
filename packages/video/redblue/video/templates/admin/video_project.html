@@ -249,6 +249,45 @@
     </form>
   {% endif %}
   </section>
+  <section class="rb-card"><h2>Upload to Dailymotion</h2>
+  {% if not social.dailymotion %}
+    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code>, the Dailymotion API key and secret and <code>DAILYMOTION_CHANNEL_ID</code> (see the video README), or upload the download yourself.</p>
+  {% else %}
+    <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/dailymotion"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if loop.first %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
+      <label>Title <input name="title" maxlength="255" value="{{ social_defaults.title[:255] }}"></label>
+      <label>Description <textarea name="description" rows="4" maxlength="3000">{{ upload_text[:3000] }}</textarea></label>
+      <label>Tags (comma-separated) <input name="tags" value="{{ social_defaults.tumblr_tags }}"></label>
+      <fieldset><legend>Who can watch</legend>
+        <label class="rb-check"><input type="radio" name="visibility" value="draft" checked> Draft (publish it yourself in Dailymotion Studio)</label>
+        <label class="rb-check"><input type="radio" name="visibility" value="private"> Private (anyone with the link)</label>
+        <label class="rb-check"><input type="radio" name="visibility" value="public"> Public</label>
+      </fieldset>
+      <label class="rb-check"><input type="checkbox" name="for_kids" value="1"> Made for kids</label>
+      <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> I watched this render, checked its facts and have the rights to everything in it</label>
+      <label class="rb-check"><input type="checkbox" name="confirm_public" value="1"> If not a draft: other people can watch it once it's encoded</label>
+      <button class="rb-btn rb-btn--primary">Upload to Dailymotion</button>
+    </form>
+  {% endif %}
+  </section>
+  <section class="rb-card"><h2>Upload to Rumble</h2>
+  {% if not social.rumble %}
+    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code> and <code>RUMBLE_ACCESS_TOKEN</code> (Rumble issues it on request; see the video README), or upload the download yourself.</p>
+  {% else %}
+    <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/rumble"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if loop.first %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
+      <label>Title <input name="title" maxlength="200" value="{{ social_defaults.title[:200] }}"></label>
+      <label>Description <textarea name="description" rows="4" maxlength="5000">{{ upload_text }}</textarea></label>
+      <fieldset><legend>Licensing</legend>
+        <label class="rb-check"><input type="radio" name="license" value="none" checked> Not for sale</label>
+        <label class="rb-check"><input type="radio" name="license" value="rumble_only"> Rumble only (see Rumble's licensing terms)</label>
+      </fieldset>
+      <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> I watched this render, checked its facts and have the rights to everything in it</label>
+      <label class="rb-check"><input type="checkbox" name="confirm_public" value="1" required> It will be public on Rumble right away (Rumble has no drafts)</label>
+      <button class="rb-btn rb-btn--primary">Publish to Rumble</button>
+    </form>
+  {% endif %}
+  </section>
   <section class="rb-card"><h2>Upload to Pinterest</h2>
   {% if not social.pinterest %}
     <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code>, the Pinterest credentials and <code>RB_VIDEO_PINTEREST_BOARD_ID</code> (see the video README), or upload the download yourself.</p>
@@ -290,7 +329,7 @@
       {% if up.url %}<br><a href="{{ up.url }}" rel="noopener noreferrer" target="_blank">{{ up.url }}</a>{% endif %}
       {% if up.error %}<br><span class="rb-error">{{ up.error }}</span>{% endif %}
       {% if up.status == "in_inbox" %}<br>Finish it in the TikTok app, then record the post's URL under Published.{% endif %}
-      {% if up.status == "draft" %}<br>{% if up.platform == "tumblr" %}Saved as a Tumblr draft: publish it from your Tumblr drafts.{% elif up.platform == "vimeo" %}Only you can watch it: change its privacy on Vimeo when you're ready.{% else %}Saved as a draft on your Page: publish it in Meta Business Suite.{% endif %} Check status afterwards to link it.{% endif %}</p>
+      {% if up.status == "draft" %}<br>{% if up.platform == "tumblr" %}Saved as a Tumblr draft: publish it from your Tumblr drafts.{% elif up.platform == "vimeo" %}Only you can watch it: change its privacy on Vimeo when you're ready.{% elif up.platform == "dailymotion" %}Saved as a draft on Dailymotion: publish it in Dailymotion Studio.{% else %}Saved as a draft on your Page: publish it in Meta Business Suite.{% endif %} Check status afterwards to link it.{% endif %}</p>
       {% if up.status in ("processing", "in_inbox", "ready", "draft") %}
       <form method="post" action="/admin/video/uploads/{{ up.id }}/refresh"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rb-btn">Check status</button></form>
       {% endif %}

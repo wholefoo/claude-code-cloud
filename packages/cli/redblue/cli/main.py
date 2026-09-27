@@ -1222,5 +1222,125 @@ def video_vimeo(
         typer.echo(f"Uploaded to Vimeo ({up.privacy}): {up.meta.get('link')}")
 
 
+@video_app.command("dailymotion")
+def video_dailymotion(
+    project: int = typer.Argument(..., help="Approved project id"),
+    fmt: str = typer.Option("16:9", "--format", "-f", help="Which render to upload"),
+    visibility: str = typer.Option("draft", help="draft (default), private (link only), public"),
+    tags: str = typer.Option("", help="Comma-separated tags"),
+    for_kids: bool = typer.Option(False, "--for-kids", help="Made for kids"),
+):
+    """Upload an approved render to Dailymotion (a draft unless you choose otherwise)."""
+    import getpass
+
+    import httpx
+
+    from redblue.video import upload_social as social
+    from redblue.video.models import VideoProject
+    from redblue.video.pipeline import description
+
+    pipe = _video()
+    _need_person()
+    with pipe.platform.db.session() as s:
+        p = s.get(VideoProject, project)
+        if p is None:
+            raise typer.BadParameter(f"No project #{project}")
+        try:
+            req = social.DailymotionRequest(
+                format=fmt,
+                title=social.defaults(p)["title"][:255],
+                description=description(p)[:3000] if p.script else "",
+                tags=tags,
+                visibility=visibility,
+                for_kids=for_kids,
+            )
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from None
+        confirmed = typer.confirm(
+            f"I watched this render and have the rights to it. Upload ({req.visibility})?"
+        )
+        public_ok = req.visibility == "draft" or typer.confirm(
+            "Other people will be able to watch it. Continue?"
+        )
+        if not (confirmed and public_ok):
+            raise typer.Abort()
+        try:
+            up = social.upload_dailymotion(
+                s,
+                p,
+                req,
+                pipe.s,
+                confirmed_by=f"cli:{getpass.getuser()}",
+                confirmed=confirmed,
+                confirmed_public=public_ok,
+            )
+        except (
+            ValueError,
+            social.UploadDisabled,
+            social.clients.PlatformError,
+            httpx.HTTPError,
+        ) as exc:
+            typer.secho(f"Upload failed: {exc}", fg="red")
+            raise typer.Exit(1) from None
+        typer.echo(f"Uploaded to Dailymotion ({req.visibility}): video {up.external_ref}")
+
+
+@video_app.command("rumble")
+def video_rumble(
+    project: int = typer.Argument(..., help="Approved project id"),
+    fmt: str = typer.Option("16:9", "--format", "-f", help="Which render to upload"),
+    license: str = typer.Option("none", help="none (not for sale, default) or rumble_only"),
+):
+    """Publish an approved render on Rumble (public right away: Rumble has no drafts)."""
+    import getpass
+
+    import httpx
+
+    from redblue.video import upload_social as social
+    from redblue.video.models import VideoProject
+    from redblue.video.pipeline import description
+
+    pipe = _video()
+    _need_person()
+    with pipe.platform.db.session() as s:
+        p = s.get(VideoProject, project)
+        if p is None:
+            raise typer.BadParameter(f"No project #{project}")
+        try:
+            req = social.RumbleRequest(
+                format=fmt,
+                title=social.defaults(p)["title"][:200],
+                description=description(p)[:5000] if p.script else "",
+                license=license,
+            )
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from None
+        confirmed = typer.confirm("I watched this render and have the rights to it. Upload?")
+        public_ok = confirmed and typer.confirm(
+            "It will be public on Rumble right away (no drafts). Publish?"
+        )
+        if not (confirmed and public_ok):
+            raise typer.Abort()
+        try:
+            up = social.upload_rumble(
+                s,
+                p,
+                req,
+                pipe.s,
+                confirmed_by=f"cli:{getpass.getuser()}",
+                confirmed=confirmed,
+                confirmed_public=public_ok,
+            )
+        except (
+            ValueError,
+            social.UploadDisabled,
+            social.clients.PlatformError,
+            httpx.HTTPError,
+        ) as exc:
+            typer.secho(f"Upload failed: {exc}", fg="red")
+            raise typer.Exit(1) from None
+        typer.echo(f"Published on Rumble: {up.url or up.external_ref}")
+
+
 if __name__ == "__main__":
     app()

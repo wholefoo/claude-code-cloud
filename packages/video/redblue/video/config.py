@@ -61,6 +61,8 @@ class VideoSettings(BaseSettings):
     bluesky_pds: str = "https://bsky.social"  # your PDS if you self-host
     tumblr_blog: str = ""  # blog name (e.g. myblog) posts go to
     tumblr_token_file: Path | None = None  # keeps Tumblr's renewed refresh tokens
+    dailymotion_category: str = "news"  # Dailymotion's "channel" field (videogames, tech, …)
+    rumble_channel_id: str = ""  # optional: numeric id of the Rumble channel to upload to
 
     tavily_api_key: SecretStr | None = Field(default=None, alias="TAVILY_API_KEY")
     firecrawl_api_key: SecretStr | None = Field(default=None, alias="FIRECRAWL_API_KEY")
@@ -100,6 +102,10 @@ class VideoSettings(BaseSettings):
     bluesky_handle: str | None = Field(default=None, alias="BLUESKY_HANDLE")
     bluesky_app_password: SecretStr | None = Field(default=None, alias="BLUESKY_APP_PASSWORD")
     vimeo_access_token: SecretStr | None = Field(default=None, alias="VIMEO_ACCESS_TOKEN")
+    dailymotion_api_key: str | None = Field(default=None, alias="DAILYMOTION_API_KEY")
+    dailymotion_api_secret: SecretStr | None = Field(default=None, alias="DAILYMOTION_API_SECRET")
+    dailymotion_channel_id: str | None = Field(default=None, alias="DAILYMOTION_CHANNEL_ID")
+    rumble_access_token: SecretStr | None = Field(default=None, alias="RUMBLE_ACCESS_TOKEN")
     tumblr_client_id: str | None = Field(default=None, alias="TUMBLR_CLIENT_ID")
     tumblr_client_secret: SecretStr | None = Field(default=None, alias="TUMBLR_CLIENT_SECRET")
     tumblr_refresh_token: SecretStr | None = Field(default=None, alias="TUMBLR_REFRESH_TOKEN")
@@ -212,6 +218,12 @@ class VideoSettings(BaseSettings):
     def bluesky_credentials(self) -> tuple[str, str] | None:
         if self.bluesky_handle and self.bluesky_app_password:
             return self.bluesky_handle.lstrip("@"), self.bluesky_app_password.get_secret_value()
+        return None
+
+    @property
+    def dailymotion_credentials(self) -> tuple[str, str] | None:
+        if self.dailymotion_api_key and self.dailymotion_api_secret:
+            return self.dailymotion_api_key, self.dailymotion_api_secret.get_secret_value()
         return None
 
     @property
