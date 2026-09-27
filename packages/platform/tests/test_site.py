@@ -95,3 +95,19 @@ def test_jsonld_cannot_break_out_of_script(app, client):
         slug = e.slug
     html = client.get(f"/blog/{slug}").text
     assert "<script>alert(1)" not in html and "<img src=x" not in html
+
+
+def test_favicon_only_embeds_safe_values(client):
+    import pytest
+
+    from redblue.templates.site import favicon_svg
+
+    svg = favicon_svg('"><script>alert(1)</script>', "#123456", "#ffffff")
+    assert "<script" not in svg and ">S</text>" in svg
+    assert ">R</text>" in favicon_svg(
+        "ümlaut-only ☃", "#123", "#fff"
+    ) or ">M</text>" in favicon_svg("ümlaut-only ☃", "#123", "#fff")
+    with pytest.raises(ValueError):
+        favicon_svg("x", 'red" onload="alert(1)', "#fff")
+    r = client.get("/_rb/favicon.svg")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("image/svg+xml")

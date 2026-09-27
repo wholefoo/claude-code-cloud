@@ -24,7 +24,7 @@ See [`docs/PLAN.md`](docs/PLAN.md) for the full plan and roadmap, and
 ## Quickstart (5 minutes)
 
 ```bash
-git clone https://github.com/redblue-dev/redblue && cd redblue
+git clone https://github.com/wholefoo/redblue && cd redblue
 python -m venv .venv && . .venv/bin/activate
 make dev                                   # installs every package in editable mode
 

@@ -24,11 +24,13 @@ def scaffold(plan: BuildPlan, dest: Path, *, overwrite: bool = False) -> list[Pa
     dest = Path(dest)
     if dest.exists() and any(dest.iterdir()) and not overwrite:
         raise ScaffoldError(f"{dest} is not empty.")
+    # Renders Python/YAML/Markdown project files, not HTML: escaping would corrupt them.
+    # Inputs are the validated BuildPlan. Accepted in .redblue.yml with the same reason.
     env = Environment(
         loader=FileSystemLoader(str(TEMPLATE_ROOT)),
         undefined=StrictUndefined,
         keep_trailing_newline=True,
-        autoescape=False,  # noqa: S701 - renders Python/YAML/Markdown files, not HTML
+        autoescape=False,  # noqa: S701  # nosemgrep
     )
     ctx = {
         "plan": plan,

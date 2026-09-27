@@ -2,7 +2,7 @@
 
 A SaaS product for small teams with a blog, docs, FAQ, glossary and newsletter
 
-Built with [RedBlue](https://github.com/redblue-dev/redblue). This is a plain FastAPI
+Built with [RedBlue](https://github.com/wholefoo/redblue). This is a plain FastAPI
 project: you own all of it.
 
 ## Run locally
