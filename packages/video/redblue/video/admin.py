@@ -467,6 +467,39 @@ def upload_x(
     return back(dest, "Uploaded to X (not posted yet). When it's processed, press Post below.")
 
 
+@router.post("/projects/{pid:int}/pinterest")
+def upload_pinterest(
+    pid: int,
+    db: DB,
+    user: Writer,
+    format: Annotated[str, Form()] = "9:16",
+    title: Annotated[str, Form()] = "",
+    description: Annotated[str, Form()] = "",
+    alt_text: Annotated[str, Form()] = "",
+    link: Annotated[str, Form()] = "",
+    confirm: Annotated[str, Form()] = "",
+):
+    need(user, Role.editor)
+    p = _project(db, pid)
+    dest = f"/admin/video/projects/{pid}"
+    try:
+        req = social.PinterestRequest(
+            format=format, title=title, description=description, alt_text=alt_text, link=link
+        )
+        social.upload_pinterest(
+            db, p, req, get_video_settings(), confirmed_by=user.email, confirmed=_flag(confirm)
+        )
+    except ValidationError as exc:
+        return back(dest, f"Check the Pinterest form: {exc.errors()[0]['msg']}"[:300])
+    except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
+        return back(dest, f"Pinterest upload failed: {exc}"[:300])
+    except httpx.HTTPError as exc:
+        return back(dest, f"Pinterest upload failed: {exc}"[:300])
+    return back(
+        dest, "Uploaded to Pinterest (not pinned yet). When it's processed, press Pin below."
+    )
+
+
 @router.post("/projects/{pid:int}/threads")
 def upload_threads(
     pid: int,

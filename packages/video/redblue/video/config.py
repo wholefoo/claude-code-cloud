@@ -53,6 +53,11 @@ class VideoSettings(BaseSettings):
     # Public https address of this RedBlue site, used for Threads' short-lived video links.
     # Defaults to the platform's RB_BASE_URL.
     public_base_url: str = ""
+    pinterest_board_id: str = ""  # numeric id of the board Pins go to
+    pinterest_api_host: Literal["api.pinterest.com", "api-sandbox.pinterest.com"] = (
+        "api.pinterest.com"
+    )
+    pinterest_token_file: Path | None = None  # keeps Pinterest's renewed refresh tokens
 
     tavily_api_key: SecretStr | None = Field(default=None, alias="TAVILY_API_KEY")
     firecrawl_api_key: SecretStr | None = Field(default=None, alias="FIRECRAWL_API_KEY")
@@ -85,6 +90,9 @@ class VideoSettings(BaseSettings):
     x_refresh_token: SecretStr | None = Field(default=None, alias="X_REFRESH_TOKEN")
     threads_access_token: SecretStr | None = Field(default=None, alias="THREADS_ACCESS_TOKEN")
     threads_user_id: str | None = Field(default=None, alias="THREADS_USER_ID")
+    pinterest_app_id: str | None = Field(default=None, alias="PINTEREST_APP_ID")
+    pinterest_app_secret: SecretStr | None = Field(default=None, alias="PINTEREST_APP_SECRET")
+    pinterest_refresh_token: SecretStr | None = Field(default=None, alias="PINTEREST_REFRESH_TOKEN")
     # Separate token for uploads (scope youtube.upload), same OAuth client.
     youtube_upload_refresh_token: SecretStr | None = Field(
         default=None, alias="YOUTUBE_UPLOAD_REFRESH_TOKEN"
@@ -173,6 +181,18 @@ class VideoSettings(BaseSettings):
     def threads_credentials(self) -> tuple[str, str] | None:
         if self.threads_access_token and self.threads_user_id:
             return self.threads_access_token.get_secret_value(), self.threads_user_id
+        return None
+
+    @property
+    def pinterest_credentials(self) -> tuple[str, str, str] | None:
+        """(app id, secret, refresh token); a token file, if present, wins over the env."""
+        refresh = (
+            self.pinterest_refresh_token.get_secret_value() if self.pinterest_refresh_token else ""
+        )
+        if self.pinterest_token_file and self.pinterest_token_file.is_file():
+            refresh = self.pinterest_token_file.read_text(encoding="utf-8").strip() or refresh
+        if self.pinterest_app_id and self.pinterest_app_secret and refresh:
+            return self.pinterest_app_id, self.pinterest_app_secret.get_secret_value(), refresh
         return None
 
     def key(self, name: str) -> str | None:

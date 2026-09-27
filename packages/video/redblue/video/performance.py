@@ -40,6 +40,8 @@ PLATFORMS: dict[str, tuple[str, ...]] = {
     "linkedin": ("linkedin.com",),
     "x": ("x.com", "twitter.com"),
     "threads": ("threads.net", "threads.com"),
+    "pinterest": ("pinterest.com", "pin.it"),
+    "snapchat": ("snapchat.com",),  # recorded by hand (no posting API)
     "other": (),
 }
 MIN_PEERS = 3  # mature videos on a platform before lift (vs. your median) is meaningful

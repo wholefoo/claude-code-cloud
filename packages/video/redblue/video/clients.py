@@ -836,6 +836,106 @@ class Threads:
         return self._json(r).get("permalink")
 
 
+class Pinterest:
+    """Pinterest API v5 video Pins: register + upload the video (not visible), then a Pin on
+    a board, created only on a person's click. Continuous refresh tokens are handed to
+    ``on_rotate`` whenever Pinterest issues a new one."""
+
+    TOKEN_PATH = "/v5/oauth/token"  # noqa: S105  # nosec B105
+
+    def __init__(
+        self,
+        credentials: tuple[str, str, str] | None,
+        board_id: str | None,
+        host: str = "api.pinterest.com",
+        client: httpx.Client | None = None,
+        on_rotate=None,
+    ):
+        if not credentials or not board_id:
+            raise MissingKey(
+                "Set PINTEREST_APP_ID, PINTEREST_APP_SECRET, PINTEREST_REFRESH_TOKEN and "
+                "RB_VIDEO_PINTEREST_BOARD_ID to post Pins."
+            )
+        if host not in ("api.pinterest.com", "api-sandbox.pinterest.com"):
+            raise ValueError("Unsupported Pinterest API host.")
+        if not re.fullmatch(r"\d{1,30}", board_id):
+            raise ValueError("RB_VIDEO_PINTEREST_BOARD_ID must be the numeric board id.")
+        self.credentials, self.board_id = credentials, board_id
+        self.base, self.http, self.on_rotate = f"https://{host}", _client(client), on_rotate
+        self._token: str | None = None
+
+    def _auth(self) -> dict:
+        if self._token is None:
+            app_id, secret, refresh = self.credentials
+            r = self.http.post(
+                self.base + self.TOKEN_PATH,
+                auth=(app_id, secret),
+                data={"grant_type": "refresh_token", "refresh_token": refresh},
+            )
+            body = r.json() if r.content else {}
+            if r.status_code >= 400 or "access_token" not in body:
+                raise PlatformError(
+                    f"Pinterest login failed: {body.get('message') or r.status_code}"
+                )
+            self._token = body["access_token"]
+            new = body.get("refresh_token")
+            if new and new != refresh and self.on_rotate:
+                self.on_rotate(new)
+        return {"Authorization": f"Bearer {self._token}"}
+
+    def _json(self, r: httpx.Response) -> dict:
+        body = r.json() if r.content else {}
+        if r.status_code >= 400:
+            raise PlatformError(f"Pinterest: {body.get('message') or r.status_code}")
+        return body
+
+    def upload(self, path) -> str:
+        r = self.http.post(
+            f"{self.base}/v5/media", headers=self._auth(), json={"media_type": "video"}
+        )
+        body = self._json(r)
+        media_id, url = str(body.get("media_id", "")), body.get("upload_url", "")
+        if not re.fullmatch(r"\d{1,40}", media_id):
+            raise PlatformError("Pinterest didn't return a media id.")
+        _https_host(url, ("amazonaws.com", "pinterest.com", "pinimg.com"))
+        fields = {str(k): str(v) for k, v in (body.get("upload_parameters") or {}).items()}
+        r = self.http.post(  # pre-signed storage upload: its own fields, no Pinterest token
+            url,
+            data=fields,
+            files={"file": (path.name, path.read_bytes(), "video/mp4")},
+            timeout=httpx.Timeout(600.0, connect=10.0),
+        )
+        if r.status_code >= 400:
+            raise PlatformError(f"Pinterest video upload failed ({r.status_code}).")
+        return media_id
+
+    def media_status(self, media_id: str) -> str:
+        r = self.http.get(f"{self.base}/v5/media/{media_id}", headers=self._auth())
+        return self._json(r).get("status", "")
+
+    def create_pin(
+        self, *, media_id: str, title: str, description: str, link: str, alt_text: str
+    ) -> str:
+        pin = {
+            "board_id": self.board_id,
+            "title": title,
+            "description": description,
+            "alt_text": alt_text,
+            "media_source": {
+                "source_type": "video_id",
+                "media_id": media_id,
+                "cover_image_key_frame_time": 1,
+            },
+        }
+        if link:
+            pin["link"] = link
+        r = self.http.post(f"{self.base}/v5/pins", headers=self._auth(), json=pin)
+        pin_id = str(self._json(r).get("id", ""))
+        if not re.fullmatch(r"\d{1,40}", pin_id):
+            raise PlatformError("Pinterest didn't return the Pin id.")
+        return pin_id
+
+
 def _int(value) -> int | None:
     try:
         return int(value) if value is not None and value != "" else None

@@ -888,7 +888,12 @@ def _social_step2(platform: str, upload: int):
         up = s.get(Upload, upload)
         if up is None or up.platform != platform:
             raise typer.BadParameter(f"No {social.name(platform)} upload #{upload}")
-        if not typer.confirm(f"Post this PUBLICLY on {social.name(platform)} now?"):
+        question = (
+            "Pin this to your Pinterest board now?"
+            if platform == "pinterest"
+            else f"Post this PUBLICLY on {social.name(platform)} now?"
+        )
+        if not typer.confirm(question):
             raise typer.Abort()
         try:
             social.publish(s, up, pipe.s, confirmed_by=f"cli:{getpass.getuser()}", confirmed=True)
@@ -931,6 +936,63 @@ def video_threads(
 def video_threads_publish(upload: int = typer.Argument(..., help="Upload id")):
     """Post an uploaded video on Threads. Always asks you to confirm."""
     _social_step2("threads", upload)
+
+
+@video_app.command("pinterest")
+def video_pinterest(
+    project: int = typer.Argument(..., help="Approved project id"),
+    fmt: str = typer.Option("9:16", "--format", "-f", help="Which render to upload"),
+    link: str = typer.Option("", help="Optional https link for the Pin"),
+):
+    """Upload an approved render to Pinterest (not pinned until you run pinterest-publish)."""
+    import getpass
+
+    import httpx
+
+    from redblue.video import upload_social as social
+    from redblue.video.models import VideoProject
+
+    pipe = _video()
+    _need_person()
+    with pipe.platform.db.session() as s:
+        p = s.get(VideoProject, project)
+        if p is None:
+            raise typer.BadParameter(f"No project #{project}")
+        d = social.defaults(p)
+        try:
+            req = social.PinterestRequest(
+                format=fmt,
+                title=d["title"][:100],
+                description=d["pinterest_description"],
+                link=link,
+            )
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from None
+        typer.echo(f"Title: {req.title}")
+        if not typer.confirm("I watched this render and have the rights to it. Upload?"):
+            raise typer.Abort()
+        try:
+            up = social.upload_pinterest(
+                s, p, req, pipe.s, confirmed_by=f"cli:{getpass.getuser()}", confirmed=True
+            )
+        except (
+            ValueError,
+            social.UploadDisabled,
+            social.clients.PlatformError,
+            httpx.HTTPError,
+        ) as exc:
+            typer.secho(f"Upload failed: {exc}", fg="red")
+            raise typer.Exit(1) from None
+        typer.echo(
+            f"Upload #{up.id} is processing (not pinned). "
+            f"Pin it with: redblue video pinterest-publish {up.id}"
+        )
+
+
+@video_app.command("pinterest-publish")
+def video_pinterest_publish(upload: int = typer.Argument(..., help="Upload id")):
+    """Create the Pin for an uploaded video. Always asks you to confirm."""
+    _social_step2("pinterest", upload)
 
 
 if __name__ == "__main__":
