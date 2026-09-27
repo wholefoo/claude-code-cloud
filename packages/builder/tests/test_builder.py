@@ -82,3 +82,20 @@ def test_seeded_drafts_cannot_publish_until_written(tmp_path):
         draft = s.scalar(select(Entry).where(Entry.slug == "home"))
         assert any("TODO" in p for p in quality_problems(s, draft))
         assert json.loads(json.dumps(draft.seo))["target_questions"]
+
+
+def test_generated_workflows_pin_actions_to_commits():
+    import re
+    from pathlib import Path
+
+    from redblue.builder.scaffold import TEMPLATE_ROOT
+
+    repo = Path(__file__).resolve().parents[3]
+    workflows = list((TEMPLATE_ROOT / ".github" / "workflows").glob("*.yml"))
+    workflows += list((repo / ".github" / "workflows").glob("*.yml"))
+    workflows += [repo / "action" / "action.yml"]
+    for wf in workflows:
+        for ref in re.findall(r"uses:\s*([^\s#]+)", wf.read_text()):
+            if ref.startswith("./"):
+                continue
+            assert re.search(r"@[0-9a-f]{40}$", ref), f"{wf.name}: {ref} is not SHA-pinned"

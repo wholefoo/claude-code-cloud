@@ -138,7 +138,7 @@ def sarif(report: ScanReport, *, include_suppressed: bool = False) -> dict:
                 "tool": {
                     "driver": {
                         "name": "RedBlue",
-                        "informationUri": "https://github.com/redblue-dev/redblue",
+                        "informationUri": "https://github.com/wholefoo/redblue",
                         "rules": list(rules.values()),
                     }
                 },

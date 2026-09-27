@@ -28,10 +28,10 @@ test that fails before and passes after, arrive as pull requests for you to revi
      gate:
        runs-on: ubuntu-latest
        steps:
-         - uses: actions/checkout@v4
+         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
            with:
              fetch-depth: 0    # lets the Red agent diff against the base branch
-         - uses: redblue-dev/redblue/action@v1
+         - uses: wholefoo/redblue/action@17275f33efd6116eafeadf65042d8682f44945ae  # main, 2026-09-27
            with:
              anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
    ```

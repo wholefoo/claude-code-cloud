@@ -7,6 +7,7 @@ redirects, a styled 404 and maintenance mode.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -403,6 +404,27 @@ def _wants_html(request: Request) -> bool:
     return not accept or "text/html" in accept or "*/*" in accept
 
 
+def favicon_svg(site_name: str, background: str, foreground: str) -> str:
+    """A monogram favicon. Only a single A-Z/0-9 character and validated hex colours
+    (``Palette`` rejects anything else) are ever placed in the markup."""
+    letter = next((c for c in site_name.upper() if c.isascii() and c.isalnum()), "R")
+    for colour in (background, foreground):
+        if not re.fullmatch(r"#[0-9a-fA-F]{3,8}", colour):
+            raise ValueError("Favicon colours must be hex values.")
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
+        + '<rect width="64" height="64" rx="14" fill="'
+        + background
+        + '"/>'
+        + '<text x="32" y="44" font-family="system-ui,sans-serif" font-size="36" '
+        + 'font-weight="700" text-anchor="middle" fill="'
+        + foreground
+        + '">'
+        + letter
+        + "</text></svg>"
+    )
+
+
 def site_router(r: SiteRenderer) -> APIRouter:
     router = APIRouter(include_in_schema=False)
 
@@ -419,18 +441,9 @@ def site_router(r: SiteRenderer) -> APIRouter:
     @router.get("/_rb/favicon.svg")
     @router.get("/favicon.ico")
     def favicon(request: Request) -> Response:
-        from html import escape
-
         s = request.app.state.rb.settings
         tokens = Tokens(**s.theme_tokens)
-        letter = escape((s.site_name.strip()[:1] or "R").upper())
-        svg = (
-            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
-            f'<rect width="64" height="64" rx="14" fill="{tokens.light.primary}"/>'
-            '<text x="32" y="44" font-family="system-ui,sans-serif" font-size="36" '
-            f'font-weight="700" text-anchor="middle" fill="{tokens.light.primary_text}">'
-            f"{letter}</text></svg>"
-        )
+        svg = favicon_svg(s.site_name, tokens.light.primary, tokens.light.primary_text)
         return Response(
             svg, media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"}
         )
