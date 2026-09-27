@@ -14,8 +14,8 @@ Trends
 ```
 
 "You upload" means by hand, or with the optional upload buttons for YouTube, TikTok,
-Instagram, Facebook, LinkedIn, X, Threads and Pinterest, which a person presses for each
-video.
+Instagram, Facebook, LinkedIn, X, Threads, Pinterest, Reddit and Bluesky, which a person
+presses for each video.
 
 ## Quickstart
 
@@ -54,6 +54,8 @@ That's useful for testing, and you add keys as you go.
 | `X_CLIENT_ID` (+ `X_CLIENT_SECRET`) + `X_REFRESH_TOKEN` + `RB_VIDEO_X_TOKEN_FILE` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Upload an approved render, then post it with a second click (X charges per post) | You upload it yourself |
 | `THREADS_ACCESS_TOKEN` + `THREADS_USER_ID` + a public https site address (+ `RB_VIDEO_UPLOAD_ENABLED`) | Send an approved render to Threads, then post it with a second click | You upload it yourself |
 | `PINTEREST_APP_ID` + `PINTEREST_APP_SECRET` + `PINTEREST_REFRESH_TOKEN` + `RB_VIDEO_PINTEREST_BOARD_ID` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Upload an approved render, then pin it to your board with a second click | You upload it yourself |
+| `REDDIT_CLIENT_ID` + `REDDIT_CLIENT_SECRET` + `REDDIT_POST_REFRESH_TOKEN` + `REDDIT_USERNAME` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Upload an approved render, then post it to one subreddit you choose | You upload it yourself |
+| `BLUESKY_HANDLE` + `BLUESKY_APP_PASSWORD` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Upload an approved render, then post it with a second click | You upload it yourself |
 
 Settings (`RB_VIDEO_*`): `NICHE`, `KEYWORDS` (JSON list), `REGION`, `SUBREDDITS` (JSON list),
 `GOOGLE_TRENDS_GEO`, `REDDIT_USER_AGENT`, `OUTPUT_DIR`, `TARGET_SECONDS`, `TEMPLATE`
@@ -67,7 +69,7 @@ Settings (`RB_VIDEO_*`): `NICHE`, `KEYWORDS` (JSON list), `REGION`, `SUBREDDITS`
 `FACEBOOK_API_VERSION` (default `v25.0`), `LINKEDIN_VERSION` (default `202606`),
 `X_TOKEN_FILE`, `X_MAX_CHARS` (default 280), `PUBLIC_BASE_URL` (default: `RB_BASE_URL`),
 `PINTEREST_BOARD_ID`, `PINTEREST_TOKEN_FILE`, `PINTEREST_API_HOST` (`api.pinterest.com` or
-`api-sandbox.pinterest.com`).
+`api-sandbox.pinterest.com`), `BLUESKY_PDS` (default `https://bsky.social`).
 
 ### How sources are compared
 
@@ -92,11 +94,11 @@ about something else (say, football scores) ranks below a smaller trend in your 
   upload description lists sources, credits and an AI-assistance note.
 - **Human in the loop.** Renders wait in review; approval only marks them ready for *you*
   to upload. Optional direct upload to YouTube, TikTok, Instagram, Facebook, LinkedIn, X,
-  Threads and Pinterest exists, but it's off by default and every upload is a person
-  pressing a button (or confirming in the CLI): no job, sweep or pipeline step ever uploads
-  or publishes. YouTube uploads are private unless the person chooses otherwise, TikTok and
-  Facebook go to drafts by default, and Instagram, LinkedIn, X, Threads and Pinterest need a
-  second click to publish.
+  Threads, Pinterest, Reddit and Bluesky exists, but it's off by default and every upload is
+  a person pressing a button (or confirming in the CLI): no job, sweep or pipeline step ever
+  uploads or publishes. YouTube uploads are private unless the person chooses otherwise,
+  TikTok and Facebook go to drafts by default, and the others need a second click to
+  publish. Reddit posts go to one subreddit per render, chosen by the person each time.
 
 ## Rendering
 
@@ -451,6 +453,54 @@ export RB_VIDEO_PINTEREST_TOKEN_FILE=/var/lib/redblue/pinterest.token   # recomm
 
 Pinterest refresh tokens last 60 days and are renewed as they're used; with the token file
 set, RedBlue keeps the latest one there (mode 600), so it doesn't expire while in use.
+
+## Upload to Reddit (optional)
+
+Two steps, each a person's click:
+
+1. **Upload video (not posted yet)** sends the render and a poster frame to Reddit's media
+   storage (`redblue video reddit 12`).
+2. **Post to Reddit:** enter **one** subreddit and a title, confirm you've read that
+   subreddit's rules, and post (`redblue video reddit-publish UPLOAD_ID --subreddit NAME
+   --title "…"`). Reddit creates video posts asynchronously; **Check status** (or the
+   tracking job) finds the post in your account's submissions and records its link.
+
+Each render can be posted to one subreddit through RedBlue. If a subreddit refuses the post
+(many don't allow self-promotion, and some require flair), the upload stays ready so you can
+choose another. Reddit's official docs don't cover video upload; RedBlue uses the same
+media-upload flow as PRAW. Reddit expects apps that post to follow its Responsible Builder
+Policy, and commercial use needs Reddit's approval.
+
+**Setup.** At reddit.com/prefs/apps, use (or create) a "web app" and authorize your
+account once with the scopes `submit identity read` and `duration=permanent`, then keep the
+refresh token. The trend-reading client id and secret are reused.
+
+```bash
+export REDDIT_CLIENT_ID=... REDDIT_CLIENT_SECRET=...     # same app as for trends
+export REDDIT_POST_REFRESH_TOKEN=...
+export REDDIT_USERNAME=yourname                            # without u/
+```
+
+## Upload to Bluesky (optional)
+
+Two steps, each a person's click:
+
+1. **Upload video (not posted yet)** sends the render to Bluesky's video service, which
+   processes it (`redblue video bluesky 12`).
+2. When it's ready, **Post to Bluesky** with its confirmation creates the post
+   (`redblue video bluesky-publish UPLOAD_ID`). Hashtags in the text become clickable tags.
+
+Posts are limited to 300 characters. Bluesky limits video length and daily uploads per
+account (see Bluesky's current limits); a failed job shows its reason under Uploads.
+
+**Setup.** In Bluesky, go to **Settings → Privacy and security → App passwords** and create
+one. It can be revoked at any time and can't change your account password.
+
+```bash
+export BLUESKY_HANDLE=you.bsky.social
+export BLUESKY_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
+export RB_VIDEO_BLUESKY_PDS=https://your-pds.example   # only if you self-host your PDS
+```
 
 ## Snapchat
 

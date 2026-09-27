@@ -19,6 +19,10 @@ the CLI), only approved projects, and the global ``RB_VIDEO_UPLOAD_ENABLED`` swi
 - **X:** step 1 uploads the video (not posted); step 2 is a separate click that posts it.
 - **Pinterest:** step 1 uploads the video (not visible); step 2 is a separate click that
   creates the Pin on the configured board.
+- **Reddit:** step 1 uploads the video and a poster frame to Reddit's media storage (not
+  posted); step 2 is a separate click where the person picks one subreddit and a title.
+  Each render can go to one subreddit only, so nothing is cross-posted in bulk.
+- **Bluesky:** step 1 uploads to Bluesky's video service; step 2 is a separate click.
 - **Threads:** step 1 lets Threads fetch the render from a signed link valid for one hour
   (it needs this site's public https address); step 2 is a separate click that posts it.
 
@@ -63,6 +67,8 @@ NAMES = {
     "x": "X",
     "threads": "Threads",
     "pinterest": "Pinterest",
+    "reddit": "Reddit",
+    "bluesky": "Bluesky",
 }
 
 
@@ -96,6 +102,12 @@ def available(s: VideoSettings) -> dict[str, bool]:
         "linkedin": s.upload_enabled and s.linkedin_credentials is not None,
         "x": s.upload_enabled and s.x_credentials is not None,
         "threads": s.upload_enabled and s.threads_credentials is not None,
+        "reddit": (
+            s.upload_enabled
+            and s.reddit_credentials is not None
+            and bool(s.reddit_post_refresh_token and s.reddit_username)
+        ),
+        "bluesky": s.upload_enabled and s.bluesky_credentials is not None,
         "pinterest": (
             s.upload_enabled and s.pinterest_credentials is not None and bool(s.pinterest_board_id)
         ),
@@ -135,6 +147,7 @@ def defaults(p: VideoProject) -> dict:
         "x_text": _short_caption(p, 280),
         "threads_text": _short_caption(p, 500),
         "pinterest_description": _caption_default(p, 800),
+        "bluesky_text": _short_caption(p, 300),
         "title": (script.title if script else p.topic)[:200],
     }
 
@@ -247,6 +260,16 @@ class PinterestRequest(BaseModel):
         if v and (parts.scheme != "https" or not parts.hostname or parts.username):
             raise ValueError("The Pin link must be an https:// address.")
         return v
+
+
+class BlueskyRequest(BaseModel):
+    format: str = "9:16"
+    text: str = Field(default="", max_length=300)
+
+    @field_validator("format")
+    @classmethod
+    def _format(cls, v: str) -> str:
+        return get_format(v).key
 
 
 class ThreadsRequest(BaseModel):
@@ -576,6 +599,20 @@ def refresh(db: Session, up: Upload, s: VideoSettings, http: httpx.Client | None
             up.status = "ready"
         elif state == "failed":
             up.status, up.error = "failed", "Pinterest couldn't process the video"
+    elif up.platform == "bluesky":
+        job = bluesky_client(s, http).job_status(up.external_ref)
+        state = job.get("state", "")
+        if state == "JOB_STATE_COMPLETED" and job.get("blob"):
+            up.status, up.meta = "ready", {**up.meta, "blob": job["blob"]}
+        elif state == "JOB_STATE_FAILED":
+            up.status = "failed"
+            up.error = str(job.get("error") or job.get("message") or "processing failed")[:500]
+    elif up.platform == "reddit" and up.status == "processing":
+        since = float(up.meta.get("submitted_at") or 0)
+        url = reddit_client(s, http).find_post(up.meta["subreddit"], up.meta["title"], since)
+        if url:
+            up.status = "published"
+            _record(db, up, url)
     elif up.platform == "threads" and up.external_ref:
         data = threads_client(s, http).status(up.external_ref)
         code = data.get("status", "")
@@ -691,9 +728,24 @@ def publish(
     confirmed_by: str,
     confirmed: bool,
     visibility: str | None = None,
+    subreddit: str = "",
+    title: str = "",
+    nsfw: bool = False,
     http: httpx.Client | None = None,
 ) -> Upload:
     """Step 2 for platforms that upload first and publish on a separate click."""
+    if up.platform == "reddit":
+        return publish_reddit(
+            db,
+            up,
+            s,
+            subreddit=subreddit,
+            title=title,
+            nsfw=nsfw,
+            confirmed_by=confirmed_by,
+            confirmed=confirmed,
+            http=http,
+        )
     if up.platform == "instagram":
         return publish_instagram(
             db, up, s, confirmed_by=confirmed_by, confirmed=confirmed, http=http
@@ -708,10 +760,13 @@ def publish(
             confirmed=confirmed,
             http=http,
         )
-    if up.platform in ("x", "threads", "pinterest"):
-        fn = {"x": publish_x, "threads": publish_threads, "pinterest": publish_pinterest}[
-            up.platform
-        ]
+    if up.platform in ("x", "threads", "pinterest", "bluesky"):
+        fn = {
+            "x": publish_x,
+            "threads": publish_threads,
+            "pinterest": publish_pinterest,
+            "bluesky": publish_bluesky,
+        }[up.platform]
         return fn(db, up, s, confirmed_by=confirmed_by, confirmed=confirmed, http=http)
     raise ValueError(f"{name(up.platform)} uploads aren't published from here.")
 
@@ -1009,4 +1064,176 @@ def publish_pinterest(
     up.meta = {**up.meta, "pin": pin_id}
     _record(db, up, f"https://www.pinterest.com/pin/{pin_id}")
     log.info("pinterest pin %s by %s", pin_id, confirmed_by)
+    return up
+
+
+# ---------------------------------------------------------------------- Reddit
+
+
+def reddit_client(s: VideoSettings, http: httpx.Client | None = None) -> clients.RedditPoster:
+    token = s.reddit_post_refresh_token.get_secret_value() if s.reddit_post_refresh_token else None
+    return clients.RedditPoster(
+        s.reddit_credentials, token, s.reddit_username, s.reddit_user_agent, http
+    )
+
+
+def upload_reddit(
+    db: Session,
+    p: VideoProject,
+    fmt: str,
+    s: VideoSettings,
+    *,
+    confirmed_by: str,
+    confirmed: bool,
+    http: httpx.Client | None = None,
+) -> Upload:
+    """Step 1: upload the video and a poster frame to Reddit's media storage (not posted)."""
+    from redblue.video.render import poster_frame
+
+    fmt = get_format(fmt).key
+    path = _guard(db, p, s, "reddit", fmt, confirmed_by, confirmed)
+    poster = poster_frame(path, path.with_suffix(".poster.jpg"))
+    rd = reddit_client(s, http)
+    video_url = rd.upload_asset(path, "video/mp4")
+    poster_url = rd.upload_asset(poster, "image/jpeg")
+    up = Upload(
+        project_id=p.id,
+        platform="reddit",
+        format=fmt,
+        mode="post",
+        status="ready",
+        external_ref=f"project-{p.id}-{get_format(fmt).slug}",
+        privacy="public",
+        uploaded_by=confirmed_by[:200],
+        meta={"video_url": video_url, "poster_url": poster_url},
+    )
+    db.add(up)
+    db.flush()
+    log.info("reddit media for project %s by %s", p.id, confirmed_by)
+    return up
+
+
+def publish_reddit(
+    db: Session,
+    up: Upload,
+    s: VideoSettings,
+    *,
+    subreddit: str,
+    title: str,
+    nsfw: bool = False,
+    confirmed_by: str,
+    confirmed: bool,
+    http: httpx.Client | None = None,
+) -> Upload:
+    """Step 2: a person posts it to one subreddit they chose. The only function that
+    submits to Reddit; an upload can be submitted once."""
+    if up.platform != "reddit":
+        raise ValueError("Only Reddit uploads are published this way.")
+    if not available(s)["reddit"]:
+        raise UploadDisabled("Reddit upload is off.")
+    subreddit = subreddit.strip().removeprefix("r/").removeprefix("/r/")
+    title = title.strip()
+    if not clients.RedditPoster.SUBREDDIT.fullmatch(subreddit):
+        raise ValueError("Enter one subreddit name, like technology (without r/).")
+    if not 1 <= len(title) <= 300:
+        raise ValueError("Reddit titles are 1 to 300 characters.")
+    if not confirmed or not confirmed_by.strip():
+        raise ValueError(
+            "Confirm that you've read r/" + subreddit + "'s rules and want to post there now."
+        )
+    if up.status != "ready":
+        raise ValueError(
+            "This video was already posted to Reddit."
+            if up.status in ("processing", "published")
+            else f"Can't post: {up.error or up.status}."
+        )
+    reddit_client(s, http).submit_video(
+        subreddit=subreddit,
+        title=title,
+        video_url=up.meta["video_url"],
+        poster_url=up.meta["poster_url"],
+        nsfw=nsfw,
+    )
+    up.status, up.published_by = "processing", confirmed_by[:200]
+    up.meta = {**up.meta, "subreddit": subreddit, "title": title, "submitted_at": time.time()}
+    db.flush()
+    try:  # Reddit creates video posts asynchronously; the link usually appears quickly
+        refresh(db, up, s, http)
+    except (clients.PlatformError, httpx.HTTPError) as exc:
+        log.info("reddit post lookup deferred: %s", exc)
+    log.info("reddit post to r/%s by %s", subreddit, confirmed_by)
+    return up
+
+
+# ---------------------------------------------------------------------- Bluesky
+
+
+def bluesky_client(s: VideoSettings, http: httpx.Client | None = None) -> clients.Bluesky:
+    return clients.Bluesky(s.bluesky_credentials, s.bluesky_pds, http)
+
+
+def upload_bluesky(
+    db: Session,
+    p: VideoProject,
+    req: BlueskyRequest,
+    s: VideoSettings,
+    *,
+    confirmed_by: str,
+    confirmed: bool,
+    http: httpx.Client | None = None,
+) -> Upload:
+    """Step 1: upload to Bluesky's video service (not posted). :func:`publish_bluesky` posts."""
+    path = _guard(db, p, s, "bluesky", req.format, confirmed_by, confirmed)
+    job_id = bluesky_client(s, http).upload_video(path)
+    up = Upload(
+        project_id=p.id,
+        platform="bluesky",
+        format=req.format,
+        mode="post",
+        status="processing",
+        external_ref=job_id[:200],
+        privacy="public",
+        uploaded_by=confirmed_by[:200],
+        meta={"text": req.text},
+    )
+    db.add(up)
+    db.flush()
+    log.info("bluesky video job %s for project %s by %s", job_id, p.id, confirmed_by)
+    return up
+
+
+def publish_bluesky(
+    db: Session,
+    up: Upload,
+    s: VideoSettings,
+    *,
+    confirmed_by: str,
+    confirmed: bool,
+    http: httpx.Client | None = None,
+) -> Upload:
+    """Step 2: a person creates the Bluesky post. The only function that posts there."""
+    if up.platform != "bluesky":
+        raise ValueError("Only Bluesky uploads are published this way.")
+    if not available(s)["bluesky"]:
+        raise UploadDisabled("Bluesky upload is off.")
+    if not confirmed or not confirmed_by.strip():
+        raise ValueError("Confirm that this should be posted on Bluesky now.")
+    refresh(db, up, s, http)
+    if up.status != "ready":
+        raise ValueError(
+            {
+                "processing": "Bluesky is still processing the video; try again shortly.",
+                "published": "This video is already posted.",
+            }.get(up.status, f"Can't post: {up.error or up.status}.")
+        )
+    fmt = get_format(up.format)
+    bs = bluesky_client(s, http)
+    rkey = bs.post(
+        text=up.meta.get("text", ""), blob=up.meta["blob"], width=fmt.width, height=fmt.height
+    )
+    up.status, up.published_by = "published", confirmed_by[:200]
+    up.meta = {**up.meta, "post": rkey}
+    handle = (s.bluesky_handle or "").lstrip("@")
+    _record(db, up, f"https://bsky.app/profile/{handle}/post/{rkey}")
+    log.info("bluesky post %s by %s", rkey, confirmed_by)
     return up

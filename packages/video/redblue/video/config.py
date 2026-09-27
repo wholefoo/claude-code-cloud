@@ -58,6 +58,7 @@ class VideoSettings(BaseSettings):
         "api.pinterest.com"
     )
     pinterest_token_file: Path | None = None  # keeps Pinterest's renewed refresh tokens
+    bluesky_pds: str = "https://bsky.social"  # your PDS if you self-host
 
     tavily_api_key: SecretStr | None = Field(default=None, alias="TAVILY_API_KEY")
     firecrawl_api_key: SecretStr | None = Field(default=None, alias="FIRECRAWL_API_KEY")
@@ -90,6 +91,12 @@ class VideoSettings(BaseSettings):
     x_refresh_token: SecretStr | None = Field(default=None, alias="X_REFRESH_TOKEN")
     threads_access_token: SecretStr | None = Field(default=None, alias="THREADS_ACCESS_TOKEN")
     threads_user_id: str | None = Field(default=None, alias="THREADS_USER_ID")
+    reddit_username: str | None = Field(default=None, alias="REDDIT_USERNAME")
+    reddit_post_refresh_token: SecretStr | None = Field(
+        default=None, alias="REDDIT_POST_REFRESH_TOKEN"
+    )
+    bluesky_handle: str | None = Field(default=None, alias="BLUESKY_HANDLE")
+    bluesky_app_password: SecretStr | None = Field(default=None, alias="BLUESKY_APP_PASSWORD")
     pinterest_app_id: str | None = Field(default=None, alias="PINTEREST_APP_ID")
     pinterest_app_secret: SecretStr | None = Field(default=None, alias="PINTEREST_APP_SECRET")
     pinterest_refresh_token: SecretStr | None = Field(default=None, alias="PINTEREST_REFRESH_TOKEN")
@@ -193,6 +200,12 @@ class VideoSettings(BaseSettings):
             refresh = self.pinterest_token_file.read_text(encoding="utf-8").strip() or refresh
         if self.pinterest_app_id and self.pinterest_app_secret and refresh:
             return self.pinterest_app_id, self.pinterest_app_secret.get_secret_value(), refresh
+        return None
+
+    @property
+    def bluesky_credentials(self) -> tuple[str, str] | None:
+        if self.bluesky_handle and self.bluesky_app_password:
+            return self.bluesky_handle.lstrip("@"), self.bluesky_app_password.get_secret_value()
         return None
 
     def key(self, name: str) -> str | None:

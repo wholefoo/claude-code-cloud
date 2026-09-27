@@ -842,7 +842,11 @@ def _social_step1(platform: str, project: int, fmt: str, text_key: str, **extra)
         if p is None:
             raise typer.BadParameter(f"No project #{project}")
         text = social.defaults(p)[text_key]
-        model = social.XRequest if platform == "x" else social.ThreadsRequest
+        model = {
+            "x": social.XRequest,
+            "threads": social.ThreadsRequest,
+            "bluesky": social.BlueskyRequest,
+        }[platform]
         try:
             req = model(format=fmt, text=text)
         except ValueError as exc:
@@ -850,7 +854,11 @@ def _social_step1(platform: str, project: int, fmt: str, text_key: str, **extra)
         typer.echo(f"Post text: {req.text}")
         if not typer.confirm("I watched this render and have the rights to it. Upload?"):
             raise typer.Abort()
-        fn = social.upload_x if platform == "x" else social.upload_threads
+        fn = {
+            "x": social.upload_x,
+            "threads": social.upload_threads,
+            "bluesky": social.upload_bluesky,
+        }[platform]
         if platform == "threads":
             extra = {
                 "public_base": pipe.s.public_base_url or pipe.platform.settings.base_url,
@@ -993,6 +1001,106 @@ def video_pinterest(
 def video_pinterest_publish(upload: int = typer.Argument(..., help="Upload id")):
     """Create the Pin for an uploaded video. Always asks you to confirm."""
     _social_step2("pinterest", upload)
+
+
+@video_app.command("reddit")
+def video_reddit(
+    project: int = typer.Argument(..., help="Approved project id"),
+    fmt: str = typer.Option("9:16", "--format", "-f", help="Which render to upload"),
+):
+    """Upload an approved render to Reddit (not posted until you run reddit-publish)."""
+    import getpass
+
+    import httpx
+
+    from redblue.video import upload_social as social
+    from redblue.video.models import VideoProject
+
+    pipe = _video()
+    _need_person()
+    with pipe.platform.db.session() as s:
+        p = s.get(VideoProject, project)
+        if p is None:
+            raise typer.BadParameter(f"No project #{project}")
+        if not typer.confirm("I watched this render and have the rights to it. Upload?"):
+            raise typer.Abort()
+        try:
+            up = social.upload_reddit(
+                s, p, fmt, pipe.s, confirmed_by=f"cli:{getpass.getuser()}", confirmed=True
+            )
+        except (
+            ValueError,
+            social.UploadDisabled,
+            social.clients.PlatformError,
+            httpx.HTTPError,
+        ) as exc:
+            typer.secho(f"Upload failed: {exc}", fg="red")
+            raise typer.Exit(1) from None
+        typer.echo(
+            f"Upload #{up.id} is ready (not posted). Post it with: "
+            f'redblue video reddit-publish {up.id} --subreddit NAME --title "..."'
+        )
+
+
+@video_app.command("reddit-publish")
+def video_reddit_publish(
+    upload: int = typer.Argument(..., help="Upload id"),
+    subreddit: str = typer.Option(..., help="One subreddit, without r/"),
+    title: str = typer.Option(..., help="Post title (1-300 characters)"),
+    nsfw: bool = typer.Option(False, help="Mark the post NSFW"),
+):
+    """Post an uploaded video to one subreddit. Always asks you to confirm."""
+    import getpass
+
+    import httpx
+
+    from redblue.video import upload_social as social
+    from redblue.video.models import Upload
+
+    pipe = _video()
+    _need_person()
+    with pipe.platform.db.session() as s:
+        up = s.get(Upload, upload)
+        if up is None or up.platform != "reddit":
+            raise typer.BadParameter(f"No Reddit upload #{upload}")
+        name = subreddit.strip().removeprefix("r/")
+        if not typer.confirm(f"You've read r/{name}'s rules. Post it there PUBLICLY now?"):
+            raise typer.Abort()
+        try:
+            social.publish_reddit(
+                s,
+                up,
+                pipe.s,
+                subreddit=subreddit,
+                title=title,
+                nsfw=nsfw,
+                confirmed_by=f"cli:{getpass.getuser()}",
+                confirmed=True,
+            )
+        except (
+            ValueError,
+            social.UploadDisabled,
+            social.clients.PlatformError,
+            httpx.HTTPError,
+        ) as exc:
+            typer.secho(f"Publish failed: {exc}", fg="red")
+            raise typer.Exit(1) from None
+        typer.echo(f"Posted: {up.url or '(Reddit is creating it; check redblue video uploads)'}")
+
+
+@video_app.command("bluesky")
+def video_bluesky(
+    project: int = typer.Argument(..., help="Approved project id"),
+    fmt: str = typer.Option("9:16", "--format", "-f", help="Which render to upload"),
+):
+    """Upload an approved render to Bluesky (not posted until you run bluesky-publish)."""
+    _social_step1("bluesky", project, fmt, "bluesky_text")
+
+
+@video_app.command("bluesky-publish")
+def video_bluesky_publish(upload: int = typer.Argument(..., help="Upload id")):
+    """Post an uploaded video on Bluesky. Always asks you to confirm."""
+    _social_step2("bluesky", upload)
 
 
 if __name__ == "__main__":

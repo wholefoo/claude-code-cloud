@@ -186,6 +186,30 @@
     <p class="rb-muted">Step 1 uploads it for processing; you post it in a separate step below. X charges per post on its pay-per-use plan.</p>
   {% endif %}
   </section>
+  <section class="rb-card"><h2>Upload to Reddit</h2>
+  {% if not social.reddit %}
+    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code>, <code>REDDIT_POST_REFRESH_TOKEN</code> and <code>REDDIT_USERNAME</code> (see the video README), or upload the download yourself.</p>
+  {% else %}
+    <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/reddit"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if r.key == "9:16" %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
+      <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> I watched this render, checked its facts and have the rights to everything in it</label>
+      <button class="rb-btn rb-btn--primary">Upload video (not posted yet)</button>
+    </form>
+    <p class="rb-muted">You pick one subreddit and a title in the next step. Most subreddits limit self-promotion: read the rules first.</p>
+  {% endif %}
+  </section>
+  <section class="rb-card"><h2>Upload to Bluesky</h2>
+  {% if not social.bluesky %}
+    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code>, <code>BLUESKY_HANDLE</code> and <code>BLUESKY_APP_PASSWORD</code> (see the video README), or upload the download yourself.</p>
+  {% else %}
+    <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/bluesky"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if r.key == "9:16" %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
+      <label>Post text <textarea name="text" rows="3" maxlength="300">{{ social_defaults.bluesky_text }}</textarea></label>
+      <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> I watched this render, checked its facts and have the rights to everything in it</label>
+      <button class="rb-btn rb-btn--primary">Upload video (not posted yet)</button>
+    </form>
+  {% endif %}
+  </section>
   <section class="rb-card"><h2>Upload to Pinterest</h2>
   {% if not social.pinterest %}
     <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code>, the Pinterest credentials and <code>RB_VIDEO_PINTEREST_BOARD_ID</code> (see the video README), or upload the download yourself.</p>
@@ -236,11 +260,21 @@
         <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> Make this Reel public on Instagram now</label>
         <button class="rb-btn rb-btn--primary">Publish to Instagram</button></form>
       {% endif %}
-      {% if up.platform in ("x", "threads") and up.status in ("processing", "ready") and user.has_role(Role.editor) %}
+      {% if up.platform in ("x", "threads", "bluesky") and up.status in ("processing", "ready") and user.has_role(Role.editor) %}
+      {% set where = {"x": "X", "threads": "Threads", "bluesky": "Bluesky"}[up.platform] %}
       <form class="rb-form" method="post" action="/admin/video/uploads/{{ up.id }}/publish"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> Post this publicly on {{ "X" if up.platform == "x" else "Threads" }} now</label>
-        <button class="rb-btn rb-btn--primary">Post to {{ "X" if up.platform == "x" else "Threads" }}</button></form>
+        <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> Post this publicly on {{ where }} now</label>
+        <button class="rb-btn rb-btn--primary">Post to {{ where }}</button></form>
       {% endif %}
+      {% if up.platform == "reddit" and up.status == "ready" and user.has_role(Role.editor) %}
+      <form class="rb-form" method="post" action="/admin/video/uploads/{{ up.id }}/publish"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label>Subreddit <input name="subreddit" required pattern="(/?r/)?[A-Za-z0-9_]{2,21}" placeholder="technology"></label>
+        <label>Title <input name="title" required maxlength="300" value="{{ social_defaults.title }}"></label>
+        <label class="rb-check"><input type="checkbox" name="nsfw" value="1"> Mark NSFW</label>
+        <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> I've read this subreddit's rules (self-promotion, flair) and want to post there now</label>
+        <button class="rb-btn rb-btn--primary">Post to Reddit</button></form>
+      {% endif %}
+      {% if up.platform == "reddit" and up.status == "processing" %}<p class="rb-muted">Posted to r/{{ up.meta.subreddit }}; Reddit is creating the post. Check status to get its link.</p>{% endif %}
       {% if up.platform == "pinterest" and up.status in ("processing", "ready") and user.has_role(Role.editor) %}
       <form class="rb-form" method="post" action="/admin/video/uploads/{{ up.id }}/publish"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> Pin this to the board now</label>
