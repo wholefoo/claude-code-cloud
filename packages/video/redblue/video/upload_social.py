@@ -1,4 +1,5 @@
-"""Person-confirmed uploads to TikTok and Instagram (YouTube is in :mod:`upload`).
+"""Person-confirmed uploads to TikTok, Instagram, Facebook and LinkedIn (YouTube is in
+:mod:`upload`).
 
 Same rule as YouTube: nothing goes out unless a person presses the button (or confirms in
 the CLI), only approved projects, and the global ``RB_VIDEO_UPLOAD_ENABLED`` switch.
@@ -11,15 +12,20 @@ the CLI), only approved projects, and the global ``RB_VIDEO_UPLOAD_ENABLED`` swi
 - **Instagram:** step 1 uploads the Reel into a container, which isn't public. Step 2 is a
   separate click on **Publish** (Instagram has no private posts), after the container
   finishes processing. Containers expire after 24 hours.
+- **Facebook Page Reels:** saved as a draft on the Page by default (publish it in Meta
+  Business Suite); publishing right away needs a second confirmation.
+- **LinkedIn:** step 1 uploads the video (not visible); step 2 is a separate click that
+  creates the post, with the visibility (anyone / connections) chosen then.
 
 :func:`refresh` only *reads* status. It's safe to run from the tracking job, and it never
-publishes: Instagram publishing happens only in :func:`publish_instagram`.
+publishes: that happens only in :func:`publish_instagram` and :func:`publish_linkedin`.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+from datetime import timedelta
 from pathlib import Path
 
 import httpx
@@ -38,7 +44,20 @@ from redblue.video.upload import UploadDisabled, render_file
 
 log = logging.getLogger("redblue.video.upload")
 
-PENDING = ("processing", "in_inbox", "ready")
+NAMES = {
+    "youtube": "YouTube",
+    "tiktok": "TikTok",
+    "instagram": "Instagram",
+    "facebook": "Facebook",
+    "linkedin": "LinkedIn",
+}
+
+
+def name(platform: str) -> str:
+    return NAMES.get(platform, platform.title())
+
+
+PENDING = ("processing", "in_inbox", "ready", "draft")
 TIKTOK_PRIVACY = (
     "PUBLIC_TO_EVERYONE",
     "MUTUAL_FOLLOW_FRIENDS",
@@ -50,6 +69,8 @@ PRIVACY_LABELS = {
     "MUTUAL_FOLLOW_FRIENDS": "Friends",
     "FOLLOWER_OF_CREATOR": "Followers",
     "SELF_ONLY": "Only me",
+    "PUBLIC": "Anyone",
+    "CONNECTIONS": "Connections",
 }
 
 
@@ -57,6 +78,8 @@ def available(s: VideoSettings) -> dict[str, bool]:
     return {
         "tiktok": s.upload_enabled and s.tiktok_credentials is not None,
         "instagram": s.upload_enabled and s.instagram_credentials is not None,
+        "facebook": s.upload_enabled and s.facebook_credentials is not None,
+        "linkedin": s.upload_enabled and s.linkedin_credentials is not None,
     }
 
 
@@ -71,9 +94,13 @@ def _caption_default(p: VideoProject, limit: int) -> str:
 
 
 def defaults(p: VideoProject) -> dict:
+    script = Script.model_validate(p.script) if p.script else None
     return {
         "tiktok_caption": _caption_default(p, 2200),
         "instagram_caption": _caption_default(p, 2200),
+        "facebook_description": _caption_default(p, 5000),
+        "linkedin_commentary": _caption_default(p, 3000),
+        "title": (script.title if script else p.topic)[:200],
     }
 
 
@@ -132,6 +159,29 @@ class InstagramRequest(BaseModel):
         return v.strip()
 
 
+class FacebookRequest(BaseModel):
+    format: str = "9:16"
+    title: str = Field(default="", max_length=255)
+    description: str = Field(default="", max_length=5000)
+    publish_now: bool = False  # default: saved as a draft on the Page
+
+    @field_validator("format")
+    @classmethod
+    def _format(cls, v: str) -> str:
+        return get_format(v).key
+
+
+class LinkedInRequest(BaseModel):
+    format: str = "16:9"
+    title: str = Field(default="", max_length=200)
+    commentary: str = Field(default="", max_length=3000)
+
+    @field_validator("format")
+    @classmethod
+    def _format(cls, v: str) -> str:
+        return get_format(v).key
+
+
 def _guard(
     db: Session,
     p: VideoProject,
@@ -143,8 +193,8 @@ def _guard(
 ) -> Path:
     if not available(s)[platform]:
         raise UploadDisabled(
-            f"{platform.title()} upload is off. Set RB_VIDEO_UPLOAD_ENABLED=true and the "
-            f"{platform.title()} credentials (see the README)."
+            f"{name(platform)} upload is off. Set RB_VIDEO_UPLOAD_ENABLED=true and the "
+            f"{name(platform)} credentials (see the README)."
         )
     if p.status != "approved":
         raise ValueError("Only approved videos can be uploaded.")
@@ -159,7 +209,7 @@ def _guard(
         )
     )
     if existing:
-        raise ValueError(f"The {fmt} render was already sent to {platform.title()}.")
+        raise ValueError(f"The {fmt} render was already sent to {name(platform)}.")
     return render_file(p, fmt, s)
 
 
@@ -304,6 +354,107 @@ def _record(db: Session, up: Upload, url: str) -> None:
         log.info("not recording %s: %s", url, exc)
 
 
+def facebook_client(s: VideoSettings, http: httpx.Client | None = None) -> clients.FacebookPage:
+    return clients.FacebookPage(s.facebook_credentials, s.facebook_api_version, http)
+
+
+def linkedin_client(s: VideoSettings, http: httpx.Client | None = None) -> clients.LinkedIn:
+    return clients.LinkedIn(s.linkedin_credentials, s.linkedin_version, http)
+
+
+def upload_facebook(
+    db: Session,
+    p: VideoProject,
+    req: FacebookRequest,
+    s: VideoSettings,
+    *,
+    confirmed_by: str,
+    confirmed: bool,
+    confirmed_public: bool = False,
+    http: httpx.Client | None = None,
+) -> Upload:
+    """Upload a Page Reel: as a draft (default; publish it in Meta Business Suite) or, with a
+    second confirmation, published right away."""
+    path = _guard(db, p, s, "facebook", req.format, confirmed_by, confirmed)
+    if req.publish_now and not confirmed_public:
+        raise ValueError("Confirm that the Reel should be public on your Page right away.")
+    video_id = facebook_client(s, http).upload(
+        path,
+        description=req.description,
+        title=req.title,
+        state="PUBLISHED" if req.publish_now else "DRAFT",
+    )
+    up = Upload(
+        project_id=p.id,
+        platform="facebook",
+        format=req.format,
+        mode="publish" if req.publish_now else "draft",
+        status="processing",
+        external_ref=video_id,
+        privacy="public",
+        uploaded_by=confirmed_by[:200],
+        published_by=confirmed_by[:200] if req.publish_now else None,
+        meta={},
+    )
+    db.add(up)
+    db.flush()
+    log.info("facebook reel %s (%s) for project %s by %s", video_id, up.mode, p.id, confirmed_by)
+    return up
+
+
+def upload_linkedin(
+    db: Session,
+    p: VideoProject,
+    req: LinkedInRequest,
+    s: VideoSettings,
+    *,
+    confirmed_by: str,
+    confirmed: bool,
+    http: httpx.Client | None = None,
+) -> Upload:
+    """Step 1: upload the video (not visible). The post is created by :func:`publish_linkedin`."""
+    path = _guard(db, p, s, "linkedin", req.format, confirmed_by, confirmed)
+    video = linkedin_client(s, http).upload(path)
+    up = Upload(
+        project_id=p.id,
+        platform="linkedin",
+        format=req.format,
+        mode="post",
+        status="processing",
+        external_ref=video,
+        uploaded_by=confirmed_by[:200],
+        meta={"title": req.title or p.topic[:200], "commentary": req.commentary},
+    )
+    db.add(up)
+    db.flush()
+    log.info("linkedin video %s for project %s by %s", video, p.id, confirmed_by)
+    return up
+
+
+def _refresh_facebook(db: Session, up: Upload, s: VideoSettings, http) -> None:
+    st = facebook_client(s, http).status(up.external_ref)
+    phases = [st.get(k) or {} for k in ("uploading_phase", "processing_phase", "publishing_phase")]
+    if st.get("video_status") == "error" or any(ph.get("status") == "error" for ph in phases):
+        errors = [e for ph in phases for e in ph.get("errors", [])]
+        up.status = "failed"
+        up.error = str(errors[0].get("message") if errors else "Facebook reported an error")[:500]
+    elif phases[2].get("publish_status") == "published":
+        up.status = "published"
+        _record(db, up, f"https://www.facebook.com/reel/{up.external_ref}")
+    elif up.mode == "draft" and st.get("video_status") == "ready":
+        up.status = "draft"  # waiting for a person to publish it in Meta Business Suite
+
+
+def _refresh_linkedin(up: Upload, s: VideoSettings, http) -> None:
+    st = linkedin_client(s, http).video_status(up.external_ref)
+    state = st.get("status", "")
+    if state == "AVAILABLE":
+        up.status = "ready"
+    elif state == "PROCESSING_FAILED":
+        up.status = "failed"
+        up.error = str(st.get("processingFailureReason", "processing failed"))[:500]
+
+
 def refresh(db: Session, up: Upload, s: VideoSettings, http: httpx.Client | None = None) -> Upload:
     """Read the platform's status for one upload. Never publishes anything."""
     if up.status not in PENDING:
@@ -332,6 +483,10 @@ def refresh(db: Session, up: Upload, s: VideoSettings, http: httpx.Client | None
             up.status = "expired"
         elif code == "PUBLISHED":
             up.status = "published"
+    elif up.platform == "facebook":
+        _refresh_facebook(db, up, s, http)
+    elif up.platform == "linkedin":
+        _refresh_linkedin(up, s, http)
     up.updated_at = utcnow()
     return up
 
@@ -339,7 +494,9 @@ def refresh(db: Session, up: Upload, s: VideoSettings, http: httpx.Client | None
 def refresh_pending(db: Session, s: VideoSettings, http: httpx.Client | None = None) -> list[str]:
     """Status check for every pending upload (used by the tracking job; read-only)."""
     notes = []
-    for up in db.scalars(select(Upload).where(Upload.status.in_(PENDING))):
+    since = utcnow() - timedelta(days=s.track_days)
+    query = select(Upload).where(Upload.status.in_(PENDING), Upload.created_at >= since)
+    for up in db.scalars(query):
         try:
             refresh(db, up, s, http)
         except (clients.MissingKey, clients.PlatformError, httpx.HTTPError, ValueError) as exc:
@@ -381,3 +538,73 @@ def publish_instagram(
         _record(db, up, link)
     log.info("instagram reel %s published by %s", media_id, confirmed_by)
     return up
+
+
+def publish_linkedin(
+    db: Session,
+    up: Upload,
+    s: VideoSettings,
+    *,
+    visibility: str | None,
+    confirmed_by: str,
+    confirmed: bool,
+    http: httpx.Client | None = None,
+) -> Upload:
+    """Step 2: a person creates the LinkedIn post. The only function that posts there."""
+    if up.platform != "linkedin":
+        raise ValueError("Only LinkedIn uploads are published this way.")
+    if not available(s)["linkedin"]:
+        raise UploadDisabled("LinkedIn upload is off.")
+    if visibility not in ("PUBLIC", "CONNECTIONS"):
+        raise ValueError("Choose who can see the LinkedIn post.")
+    if visibility == "CONNECTIONS" and ":organization:" in (s.linkedin_author_urn or ""):
+        raise ValueError("Company pages can only post publicly.")
+    if not confirmed or not confirmed_by.strip():
+        raise ValueError("Confirm that this should be posted on LinkedIn now.")
+    refresh(db, up, s, http)
+    if up.status != "ready":
+        raise ValueError(
+            {
+                "processing": "LinkedIn is still processing the video; try again shortly.",
+                "published": "This video is already posted.",
+            }.get(up.status, f"Can't post: {up.error or up.status}.")
+        )
+    urn = linkedin_client(s, http).post(
+        video=up.external_ref,
+        commentary=up.meta.get("commentary", ""),
+        title=up.meta.get("title", ""),
+        visibility=visibility,
+    )
+    up.status, up.published_by, up.privacy = "published", confirmed_by[:200], visibility
+    up.meta = {**up.meta, "post": urn}
+    _record(db, up, f"https://www.linkedin.com/feed/update/{urn}")
+    log.info("linkedin post %s by %s", urn, confirmed_by)
+    return up
+
+
+def publish(
+    db: Session,
+    up: Upload,
+    s: VideoSettings,
+    *,
+    confirmed_by: str,
+    confirmed: bool,
+    visibility: str | None = None,
+    http: httpx.Client | None = None,
+) -> Upload:
+    """Step 2 for platforms that upload first and publish on a separate click."""
+    if up.platform == "instagram":
+        return publish_instagram(
+            db, up, s, confirmed_by=confirmed_by, confirmed=confirmed, http=http
+        )
+    if up.platform == "linkedin":
+        return publish_linkedin(
+            db,
+            up,
+            s,
+            visibility=visibility,
+            confirmed_by=confirmed_by,
+            confirmed=confirmed,
+            http=http,
+        )
+    raise ValueError(f"{name(up.platform)} uploads aren't published from here.")

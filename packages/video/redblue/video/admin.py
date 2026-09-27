@@ -401,24 +401,104 @@ def refresh_upload(uid: int, db: DB, user: Writer):
         social.refresh(db, up, get_video_settings())
     except (social.clients.MissingKey, social.clients.PlatformError, httpx.HTTPError) as exc:
         return back(dest, f"Status check failed: {exc}"[:300])
-    return back(dest, f"{up.platform.title()} upload: {up.status.replace('_', ' ')}.")
+    return back(dest, f"{social.name(up.platform)} upload: {up.status.replace('_', ' ')}.")
 
 
 @router.post("/uploads/{uid:int}/publish")
-def publish_upload(uid: int, db: DB, user: Writer, confirm: Annotated[str, Form()] = ""):
-    """Instagram step 2: a person makes the Reel public."""
+def publish_upload(
+    uid: int,
+    db: DB,
+    user: Writer,
+    confirm: Annotated[str, Form()] = "",
+    visibility: Annotated[str, Form()] = "",
+):
+    """Step 2 (Instagram, LinkedIn): a person makes it public."""
     need(user, Role.editor)
     up = _upload(db, uid)
     dest = f"/admin/video/projects/{up.project_id}"
     try:
-        social.publish_instagram(
-            db, up, get_video_settings(), confirmed_by=user.email, confirmed=_flag(confirm)
+        social.publish(
+            db,
+            up,
+            get_video_settings(),
+            confirmed_by=user.email,
+            confirmed=_flag(confirm),
+            visibility=visibility or None,
         )
     except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
         return back(dest, f"Publish failed: {exc}"[:300])
     except httpx.HTTPError as exc:
         return back(dest, f"Publish failed: {exc}"[:300])
-    return back(dest, f"Published on Instagram{': ' + up.url if up.url else ''}.")
+    where = social.name(up.platform)
+    return back(dest, f"Published on {where}{': ' + up.url if up.url else ''}.")
+
+
+@router.post("/projects/{pid:int}/facebook")
+def upload_facebook(
+    pid: int,
+    db: DB,
+    user: Writer,
+    format: Annotated[str, Form()] = "9:16",
+    title: Annotated[str, Form()] = "",
+    description: Annotated[str, Form()] = "",
+    publish_now: Annotated[str, Form()] = "",
+    confirm: Annotated[str, Form()] = "",
+    confirm_public: Annotated[str, Form()] = "",
+):
+    need(user, Role.editor)
+    p = _project(db, pid)
+    dest = f"/admin/video/projects/{pid}"
+    try:
+        req = social.FacebookRequest(
+            format=format, title=title, description=description, publish_now=_flag(publish_now)
+        )
+        up = social.upload_facebook(
+            db,
+            p,
+            req,
+            get_video_settings(),
+            confirmed_by=user.email,
+            confirmed=_flag(confirm),
+            confirmed_public=_flag(confirm_public),
+        )
+    except ValidationError as exc:
+        return back(dest, f"Check the Facebook form: {exc.errors()[0]['msg']}"[:300])
+    except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
+        return back(dest, f"Facebook upload failed: {exc}"[:300])
+    except httpx.HTTPError as exc:
+        return back(dest, f"Facebook upload failed: {exc}"[:300])
+    if up.mode == "draft":
+        return back(dest, "Saved as a draft Reel on your Page. Publish it in Meta Business Suite.")
+    return back(dest, "Sent to your Page; Facebook is processing it. Check status shortly.")
+
+
+@router.post("/projects/{pid:int}/linkedin")
+def upload_linkedin(
+    pid: int,
+    db: DB,
+    user: Writer,
+    format: Annotated[str, Form()] = "16:9",
+    title: Annotated[str, Form()] = "",
+    commentary: Annotated[str, Form()] = "",
+    confirm: Annotated[str, Form()] = "",
+):
+    need(user, Role.editor)
+    p = _project(db, pid)
+    dest = f"/admin/video/projects/{pid}"
+    try:
+        req = social.LinkedInRequest(format=format, title=title, commentary=commentary)
+        social.upload_linkedin(
+            db, p, req, get_video_settings(), confirmed_by=user.email, confirmed=_flag(confirm)
+        )
+    except ValidationError as exc:
+        return back(dest, f"Check the LinkedIn form: {exc.errors()[0]['msg']}"[:300])
+    except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
+        return back(dest, f"LinkedIn upload failed: {exc}"[:300])
+    except httpx.HTTPError as exc:
+        return back(dest, f"LinkedIn upload failed: {exc}"[:300])
+    return back(
+        dest, "Uploaded to LinkedIn (not posted yet). When it's processed, press Post below."
+    )
 
 
 @router.post("/publications/{pub_id:int}/metrics")

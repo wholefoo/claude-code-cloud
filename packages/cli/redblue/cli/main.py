@@ -682,5 +682,149 @@ def video_instagram_publish(upload: int = typer.Argument(..., help="Upload id"))
         typer.echo(f"Published: {up.url or '(link pending)'}")
 
 
+@video_app.command("facebook")
+def video_facebook(
+    project: int = typer.Argument(..., help="Approved project id"),
+    fmt: str = typer.Option("9:16", "--format", "-f", help="Which render to upload"),
+    publish_now: bool = typer.Option(False, "--publish-now", help="Default: save as a draft"),
+):
+    """Upload an approved render as a Facebook Page Reel (a draft unless --publish-now)."""
+    import getpass
+
+    import httpx
+
+    from redblue.video import upload_social as social
+    from redblue.video.models import VideoProject
+
+    pipe = _video()
+    _need_person()
+    with pipe.platform.db.session() as s:
+        p = s.get(VideoProject, project)
+        if p is None:
+            raise typer.BadParameter(f"No project #{project}")
+        d = social.defaults(p)
+        try:
+            req = social.FacebookRequest(
+                format=fmt,
+                title=d["title"],
+                description=d["facebook_description"],
+                publish_now=publish_now,
+            )
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from None
+        where = "publish it on your Page now" if publish_now else "save it as a Page draft"
+        confirmed = typer.confirm(f"I watched this render and have the rights to it. {where}?")
+        public_ok = not publish_now or typer.confirm("It will be PUBLIC right away. Continue?")
+        if not (confirmed and public_ok):
+            raise typer.Abort()
+        try:
+            up = social.upload_facebook(
+                s,
+                p,
+                req,
+                pipe.s,
+                confirmed_by=f"cli:{getpass.getuser()}",
+                confirmed=confirmed,
+                confirmed_public=public_ok,
+            )
+        except (
+            ValueError,
+            social.UploadDisabled,
+            social.clients.PlatformError,
+            httpx.HTTPError,
+        ) as exc:
+            typer.secho(f"Upload failed: {exc}", fg="red")
+            raise typer.Exit(1) from None
+        typer.echo(f"Upload #{up.id} sent ({up.mode}). Check it with: redblue video uploads")
+
+
+@video_app.command("linkedin")
+def video_linkedin(
+    project: int = typer.Argument(..., help="Approved project id"),
+    fmt: str = typer.Option("16:9", "--format", "-f", help="Which render to upload"),
+):
+    """Upload an approved render to LinkedIn (not posted until you run linkedin-publish)."""
+    import getpass
+
+    import httpx
+
+    from redblue.video import upload_social as social
+    from redblue.video.models import VideoProject
+
+    pipe = _video()
+    _need_person()
+    with pipe.platform.db.session() as s:
+        p = s.get(VideoProject, project)
+        if p is None:
+            raise typer.BadParameter(f"No project #{project}")
+        d = social.defaults(p)
+        try:
+            req = social.LinkedInRequest(
+                format=fmt, title=d["title"], commentary=d["linkedin_commentary"]
+            )
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from None
+        typer.echo("Post text:\n  " + req.commentary.replace("\n", "\n  "))
+        if not typer.confirm("I watched this render and have the rights to it. Upload?"):
+            raise typer.Abort()
+        try:
+            up = social.upload_linkedin(
+                s, p, req, pipe.s, confirmed_by=f"cli:{getpass.getuser()}", confirmed=True
+            )
+        except (
+            ValueError,
+            social.UploadDisabled,
+            social.clients.PlatformError,
+            httpx.HTTPError,
+        ) as exc:
+            typer.secho(f"Upload failed: {exc}", fg="red")
+            raise typer.Exit(1) from None
+        typer.echo(
+            f"Upload #{up.id} is processing (not posted). Post it with: "
+            f"redblue video linkedin-publish {up.id} --visibility PUBLIC"
+        )
+
+
+@video_app.command("linkedin-publish")
+def video_linkedin_publish(
+    upload: int = typer.Argument(..., help="Upload id"),
+    visibility: str = typer.Option(..., help="Required: PUBLIC or CONNECTIONS"),
+):
+    """Create the LinkedIn post for an uploaded video. Always asks you to confirm."""
+    import getpass
+
+    import httpx
+
+    from redblue.video import upload_social as social
+    from redblue.video.models import Upload
+
+    pipe = _video()
+    _need_person()
+    with pipe.platform.db.session() as s:
+        up = s.get(Upload, upload)
+        if up is None:
+            raise typer.BadParameter(f"No upload #{upload}")
+        if not typer.confirm(f"Post this on LinkedIn now ({visibility.upper()})?"):
+            raise typer.Abort()
+        try:
+            social.publish_linkedin(
+                s,
+                up,
+                pipe.s,
+                visibility=visibility.upper(),
+                confirmed_by=f"cli:{getpass.getuser()}",
+                confirmed=True,
+            )
+        except (
+            ValueError,
+            social.UploadDisabled,
+            social.clients.PlatformError,
+            httpx.HTTPError,
+        ) as exc:
+            typer.secho(f"Publish failed: {exc}", fg="red")
+            raise typer.Exit(1) from None
+        typer.echo(f"Posted: {up.url}")
+
+
 if __name__ == "__main__":
     app()

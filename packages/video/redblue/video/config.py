@@ -45,6 +45,8 @@ class VideoSettings(BaseSettings):
         "graph.facebook.com"  # Facebook Login; use graph.instagram.com for Instagram Login
     )
     instagram_api_version: str = "v25.0"
+    facebook_api_version: str = "v25.0"
+    linkedin_version: str = "202606"  # LinkedIn-Version header (YYYYMM)
 
     tavily_api_key: SecretStr | None = Field(default=None, alias="TAVILY_API_KEY")
     firecrawl_api_key: SecretStr | None = Field(default=None, alias="FIRECRAWL_API_KEY")
@@ -66,6 +68,12 @@ class VideoSettings(BaseSettings):
     tiktok_refresh_token: SecretStr | None = Field(default=None, alias="TIKTOK_REFRESH_TOKEN")
     instagram_access_token: SecretStr | None = Field(default=None, alias="INSTAGRAM_ACCESS_TOKEN")
     instagram_user_id: str | None = Field(default=None, alias="INSTAGRAM_USER_ID")
+    facebook_page_access_token: SecretStr | None = Field(
+        default=None, alias="FACEBOOK_PAGE_ACCESS_TOKEN"
+    )
+    facebook_page_id: str | None = Field(default=None, alias="FACEBOOK_PAGE_ID")
+    linkedin_access_token: SecretStr | None = Field(default=None, alias="LINKEDIN_ACCESS_TOKEN")
+    linkedin_author_urn: str | None = Field(default=None, alias="LINKEDIN_AUTHOR_URN")
     # Separate token for uploads (scope youtube.upload), same OAuth client.
     youtube_upload_refresh_token: SecretStr | None = Field(
         default=None, alias="YOUTUBE_UPLOAD_REFRESH_TOKEN"
@@ -120,6 +128,18 @@ class VideoSettings(BaseSettings):
     def instagram_credentials(self) -> tuple[str, str] | None:
         if self.instagram_access_token and self.instagram_user_id:
             return self.instagram_access_token.get_secret_value(), self.instagram_user_id
+        return None
+
+    @property
+    def facebook_credentials(self) -> tuple[str, str] | None:
+        if self.facebook_page_access_token and self.facebook_page_id:
+            return self.facebook_page_access_token.get_secret_value(), self.facebook_page_id
+        return None
+
+    @property
+    def linkedin_credentials(self) -> tuple[str, str] | None:
+        if self.linkedin_access_token and self.linkedin_author_urn:
+            return self.linkedin_access_token.get_secret_value(), self.linkedin_author_urn
         return None
 
     def key(self, name: str) -> str | None:

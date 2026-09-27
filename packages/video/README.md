@@ -13,8 +13,8 @@ Google     opportunity ◄──────────────── track
 Trends
 ```
 
-"You upload" means by hand, or with the optional upload buttons for YouTube, TikTok and
-Instagram, which a person presses for each video.
+"You upload" means by hand, or with the optional upload buttons for YouTube, TikTok,
+Instagram, Facebook and LinkedIn, which a person presses for each video.
 
 ## Quickstart
 
@@ -48,6 +48,8 @@ That's useful for testing, and you add keys as you go.
 | `YOUTUBE_UPLOAD_REFRESH_TOKEN` + `RB_VIDEO_UPLOAD_ENABLED=true` (same OAuth client) | Optional one-click upload of an approved render to YouTube | You upload the downloaded file yourself |
 | `TIKTOK_CLIENT_KEY` + `TIKTOK_CLIENT_SECRET` + `TIKTOK_REFRESH_TOKEN` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Send an approved render to your TikTok drafts (or post it directly) | You upload it yourself |
 | `INSTAGRAM_ACCESS_TOKEN` + `INSTAGRAM_USER_ID` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Upload an approved render as a Reel, then publish it with a second click | You upload it yourself |
+| `FACEBOOK_PAGE_ACCESS_TOKEN` + `FACEBOOK_PAGE_ID` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Upload an approved render as a Page Reel (a draft by default) | You upload it yourself |
+| `LINKEDIN_ACCESS_TOKEN` + `LINKEDIN_AUTHOR_URN` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Upload an approved render, then post it with a second click | You upload it yourself |
 
 Settings (`RB_VIDEO_*`): `NICHE`, `KEYWORDS` (JSON list), `REGION`, `SUBREDDITS` (JSON list),
 `GOOGLE_TRENDS_GEO`, `REDDIT_USER_AGENT`, `OUTPUT_DIR`, `TARGET_SECONDS`, `TEMPLATE`
@@ -57,7 +59,8 @@ Settings (`RB_VIDEO_*`): `NICHE`, `KEYWORDS` (JSON list), `REGION`, `SUBREDDITS`
 `SCORE_WEIGHTS` (JSON object, e.g. `{"velocity": 0.2, "relevance": 0.45}`), `UPLOAD_ENABLED`
 (default false), `UPLOAD_CATEGORY_ID` (default 28, Science & Technology), `TIKTOK_MODE`
 (`inbox` or `direct`), `TIKTOK_USERNAME`, `TIKTOK_TOKEN_FILE`, `INSTAGRAM_GRAPH_HOST`
-(`graph.facebook.com` or `graph.instagram.com`), `INSTAGRAM_API_VERSION` (default `v25.0`).
+(`graph.facebook.com` or `graph.instagram.com`), `INSTAGRAM_API_VERSION` (default `v25.0`),
+`FACEBOOK_API_VERSION` (default `v25.0`), `LINKEDIN_VERSION` (default `202606`).
 
 ### How sources are compared
 
@@ -81,11 +84,11 @@ about something else (say, football scores) ranks below a smaller trend in your 
 - **Licensing.** Every asset records its provider, license and attribution. The generated
   upload description lists sources, credits and an AI-assistance note.
 - **Human in the loop.** Renders wait in review; approval only marks them ready for *you*
-  to upload. Optional direct upload to YouTube, TikTok and Instagram exists, but it's off
-  by default and every upload is a person pressing a button (or confirming in the CLI): no
-  job, sweep or pipeline step ever uploads or publishes. YouTube uploads are private unless
-  the person chooses otherwise, TikTok goes to your drafts by default, and Instagram needs
-  a second click to publish.
+  to upload. Optional direct upload to YouTube, TikTok, Instagram, Facebook and LinkedIn
+  exists, but it's off by default and every upload is a person pressing a button (or
+  confirming in the CLI): no job, sweep or pipeline step ever uploads or publishes. YouTube
+  uploads are private unless the person chooses otherwise, TikTok and Facebook go to drafts
+  by default, and Instagram and LinkedIn need a second click to publish.
 
 ## Rendering
 
@@ -304,3 +307,54 @@ export INSTAGRAM_USER_ID=1784...       # the numeric Instagram account id
 
 Long-lived Instagram tokens last 60 days; refresh or regenerate them before then. Until
 Meta approves your app, only accounts with a role on the app can use it.
+
+## Upload to Facebook (optional)
+
+Page Reels only; the Graph API can't post to personal profiles or groups. With credentials
+set, editors see an **Upload to Facebook** panel on approved projects
+(`redblue video facebook 12 -f 9:16`).
+
+- **Draft (default):** the Reel is saved as a draft on your Page. Publish it yourself in
+  Meta Business Suite. **Check status** (or the tracking job) notices when it's published
+  and records the link.
+- **Publish now:** posts it to the Page right away; this needs a second confirmation
+  (`--publish-now` in the CLI).
+
+**Setup.** In a Meta developer app, request `pages_show_list`, `pages_read_engagement` and
+`pages_manage_posts`. In the Graph API Explorer, get a user token with those permissions,
+exchange it for a long-lived one (Access Token Debugger), then read `/me/accounts` for the
+Page's access token and id. A Page token from a long-lived user token doesn't expire unless
+you change your password or remove the app.
+
+```bash
+export FACEBOOK_PAGE_ACCESS_TOKEN=... FACEBOOK_PAGE_ID=1234567890
+```
+
+## Upload to LinkedIn (optional)
+
+Two steps, each a person's click, like Instagram:
+
+1. **Upload video (not posted yet)** sends the render to LinkedIn with the post text you
+   entered (`redblue video linkedin 12 -f 16:9`).
+2. When LinkedIn has processed it (**Check status** shows "ready"), choose **Anyone** or
+   **Connections only** (no default) and press **Post to LinkedIn**
+   (`redblue video linkedin-publish UPLOAD_ID --visibility PUBLIC`). Company pages can only
+   post publicly. The post's link is recorded, so tracking starts.
+
+Characters LinkedIn treats as formatting (`#`, `@`, brackets and so on) are escaped, so the
+text appears exactly as typed; hashtags show as plain text rather than links.
+
+**Setup.** In a LinkedIn developer app, add **Share on LinkedIn** (`w_member_social`) and
+**Sign In with LinkedIn using OpenID Connect** (`openid profile`). Posting as a company page
+needs the Community Management API (`w_organization_social`), which LinkedIn must approve.
+Generate an access token with the developer portal's OAuth token tool (valid 60 days), then
+find your member id:
+
+```bash
+curl -s -H "Authorization: Bearer $LINKEDIN_ACCESS_TOKEN" https://api.linkedin.com/v2/userinfo
+export LINKEDIN_ACCESS_TOKEN=...
+export LINKEDIN_AUTHOR_URN=urn:li:person:SUB_FROM_USERINFO   # or urn:li:organization:ID
+```
+
+LinkedIn retires API versions after about a year. If you see a version error, set
+`RB_VIDEO_LINKEDIN_VERSION` to a recent month (YYYYMM).
