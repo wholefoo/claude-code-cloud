@@ -5,13 +5,16 @@ sources, script an original short, render it with licensed footage and AI narrat
 it to a human for review. **Nothing is published automatically.**
 
 ```
-sweep ──► score ──► brief ──► script ──► assets ──► render ──► review ──► (you upload) ──► track
+sweep ──► score ──► brief ──► script ──► assets ──► render ──► review ──► you upload ─────► track
 YouTube    velocity  Tavily     Claude     Pexels     FFmpeg     admin                     YouTube APIs
 Tavily     freshness Firecrawl  (cited)    ElevenLabs + captions approval                  CSV / by hand
 Reddit     relevance                                                                            │
 Google     opportunity ◄──────────────── track record (what worked for you) ◄────────────────────┘
 Trends
 ```
+
+"You upload" means by hand, or with the optional **Upload to YouTube** button, which a
+person presses for each video.
 
 ## Quickstart
 
@@ -42,13 +45,15 @@ That's useful for testing, and you add keys as you go.
 | `ELEVENLABS_API_KEY` | AI narration | Silent video with captions |
 | `ANTHROPIC_API_KEY` | Brief and script writing (structured, cited) | Deterministic templates |
 | `YOUTUBE_OAUTH_CLIENT_ID` + `YOUTUBE_OAUTH_CLIENT_SECRET` + `YOUTUBE_OAUTH_REFRESH_TOKEN` | Retention and shares for your uploads (YouTube Analytics, read-only) | Public view/like/comment counts only |
+| `YOUTUBE_UPLOAD_REFRESH_TOKEN` + `RB_VIDEO_UPLOAD_ENABLED=true` (same OAuth client) | Optional one-click upload of an approved render to YouTube | You upload the downloaded file yourself |
 
 Settings (`RB_VIDEO_*`): `NICHE`, `KEYWORDS` (JSON list), `REGION`, `SUBREDDITS` (JSON list),
 `GOOGLE_TRENDS_GEO`, `REDDIT_USER_AGENT`, `OUTPUT_DIR`, `TARGET_SECONDS`, `TEMPLATE`
 (default `bold`), `FORMATS` (JSON list, default `["9:16"]`), `VOICE_ID`, `CAPTIONS`
 (`whisper` or `even`), `WHISPER_MODEL`, `PERF_WINDOW_HOURS` (default 72), `TRACK_DAYS`
 (default 30), `LEARN_FROM_PERFORMANCE` (default true), `LEARN_MIN_VIDEOS` (default 5),
-`SCORE_WEIGHTS` (JSON object, e.g. `{"velocity": 0.2, "relevance": 0.45}`).
+`SCORE_WEIGHTS` (JSON object, e.g. `{"velocity": 0.2, "relevance": 0.45}`), `UPLOAD_ENABLED`
+(default false), `UPLOAD_CATEGORY_ID` (default 28, Science & Technology).
 
 ### How sources are compared
 
@@ -72,7 +77,9 @@ about something else (say, football scores) ranks below a smaller trend in your 
 - **Licensing.** Every asset records its provider, license and attribution. The generated
   upload description lists sources, credits and an AI-assistance note.
 - **Human in the loop.** Renders wait in review; approval only marks them ready for *you*
-  to upload. Platform posting APIs are deliberately not wired up.
+  to upload. Optional direct upload to YouTube exists, but it's off by default and every
+  upload is a person pressing a button (or confirming in the CLI): no job, sweep or pipeline
+  step ever uploads, and uploads are private unless the person chooses otherwise.
 
 ## Rendering
 
@@ -155,16 +162,59 @@ doesn't take over. The page also shows how well each scoring signal (velocity, f
 relevance, opportunity) predicted your results; adjust `RB_VIDEO_SCORE_WEIGHTS` if one isn't
 helping. Turn learning off with `RB_VIDEO_LEARN_FROM_PERFORMANCE=false`.
 
-**Getting a YouTube Analytics refresh token (optional).** In Google Cloud, enable the
-YouTube Analytics API and create an OAuth client (Desktop app). Authorize the channel owner
-account once with the `https://www.googleapis.com/auth/yt-analytics.readonly` scope, for
-example with the [OAuth 2.0 Playground](https://developers.google.com/oauthplayground)
-using your own client, and keep the refresh token in your environment or secret manager.
-The scope is read-only. Analytics data lags two to three days, so public counts are used
-for views when they're higher.
+**Getting a YouTube Analytics refresh token (optional).**
+
+1. In Google Cloud, enable the YouTube Analytics API. On the OAuth consent screen, add the
+   channel owner's Google account as a test user.
+2. Create an OAuth client of type **Web application** with the authorized redirect URI
+   `https://developers.google.com/oauthplayground`.
+3. In the [OAuth 2.0 Playground](https://developers.google.com/oauthplayground), open the
+   settings (gear icon), tick "Use your own OAuth credentials" and enter your client's id
+   and secret.
+4. Authorize the scope `https://www.googleapis.com/auth/yt-analytics.readonly` as the channel
+   owner, choosing the brand channel if you have one. Then exchange the code for tokens and
+   keep the refresh token in your environment or secret manager.
+
+While the consent screen's publishing status is "Testing", Google expires refresh tokens
+after 7 days; publish the consent screen to keep them. The scope is read-only. Analytics
+data lags two to three days, so public counts are used for views when they're higher.
 
 Only your own published videos are read. Nothing is posted, liked or commented.
 
-## Next steps
+## Direct upload to YouTube (optional)
 
-Optional direct upload after approval (it would still need a human to press the button).
+Off by default. When it's on, an editor sees an **Upload to YouTube** panel on approved
+projects: pick the render (format), check the pre-filled title, description (sources,
+credits and AI note) and tags, choose visibility, answer "Made for kids?", and confirm.
+
+- **Private by default.** Unlisted and public are one click away, but public asks for a
+  second confirmation. You can also upload privately and make it public later in YouTube
+  Studio, which is a good habit for the first few.
+- **Disclosure.** "Altered or synthetic content" is ticked by default because the narration
+  is an AI voice; untick it if you replaced the voice with your own.
+- **Once per render.** Each format uploads once; the upload is recorded as a publication
+  (with who confirmed it), so performance tracking starts automatically.
+- **Only a person uploads.** There's no background job or schedule for it, the pipeline
+  never calls it, and the CLI version (`redblue video upload 12 -f 9:16
+  --not-made-for-kids`) shows what it will send and asks you to confirm, with no `--yes`
+  flag, and refuses to run without a terminal.
+
+**Setup.** In the Google Cloud project that has your OAuth client (see "Getting a YouTube
+Analytics refresh token" above), enable the YouTube Data API v3. Authorize the channel
+owner account once more with the `https://www.googleapis.com/auth/youtube.upload` scope and
+keep that refresh token separate from the read-only one:
+
+```bash
+export YOUTUBE_OAUTH_CLIENT_ID=... YOUTUBE_OAUTH_CLIENT_SECRET=...
+export YOUTUBE_UPLOAD_REFRESH_TOKEN=...      # youtube.upload scope
+export RB_VIDEO_UPLOAD_ENABLED=true
+```
+
+Unverified Google Cloud apps can only upload **private** videos (YouTube locks public and
+unlisted uploads from unaudited API projects), so pass Google's API audit before relying on
+public uploads; until then, upload privately and publish from YouTube Studio. Each upload
+uses a large share of the default daily API quota, so check your quota in Google Cloud.
+
+TikTok and Instagram uploads aren't included: their posting APIs need an app review and,
+for Instagram, a publicly hosted copy of the video. Download the render and upload those
+yourself, then record the URL.

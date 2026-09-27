@@ -443,5 +443,69 @@ def video_performance():
                 typer.echo(f"  {feature:8} {g.value:20} n={g.n:<3} x{g.multiplier:.2f}")
 
 
+@video_app.command("upload")
+def video_upload(
+    project: int = typer.Argument(..., help="Approved project id"),
+    fmt: str = typer.Option("9:16", "--format", "-f", help="Which render to upload"),
+    privacy: str = typer.Option("private", help="private, unlisted or public"),
+    made_for_kids: bool = typer.Option(
+        ..., "--made-for-kids/--not-made-for-kids", help="Required: YouTube audience setting"
+    ),
+    title: str = typer.Option("", help="Defaults to the script title"),
+):
+    """Upload an approved render to YouTube. Always asks you to confirm; there is no --yes."""
+    import getpass
+
+    import httpx
+
+    from redblue.video import upload as uploads
+    from redblue.video.models import VideoProject
+
+    pipe = _video()
+    if not sys.stdin.isatty():
+        raise typer.BadParameter("Uploading needs a person at the keyboard to confirm it.")
+    with pipe.platform.db.session() as s:
+        p = s.get(VideoProject, project)
+        if p is None:
+            raise typer.BadParameter(f"No project #{project}")
+        d = uploads.defaults(p, pipe.s)
+        try:
+            req = uploads.UploadRequest(
+                format=fmt,
+                title=title or d["title"] or p.topic,
+                description=d["description"],
+                tags=d["tags"],
+                privacy=privacy,
+                made_for_kids=made_for_kids,
+                category_id=d["category_id"],
+            )
+            path = uploads.render_file(p, req.format, pipe.s)
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from None
+        typer.secho(f"Title:   {req.title}", bold=True)
+        typer.echo(f"File:    {path}\nPrivacy: {req.privacy}  ·  made for kids: {made_for_kids}")
+        typer.echo("Description:\n  " + req.description.replace("\n", "\n  "))
+        confirmed = typer.confirm("I watched this render and have the rights to it. Upload?")
+        public_ok = req.privacy != "public" or typer.confirm(
+            "It will be PUBLIC immediately. Continue?"
+        )
+        if not (confirmed and public_ok):
+            raise typer.Abort()
+        try:
+            pub = uploads.upload(
+                s,
+                p,
+                req,
+                pipe.s,
+                confirmed_by=f"cli:{getpass.getuser()}",
+                confirmed=confirmed,
+                confirmed_public=public_ok,
+            )
+        except (ValueError, uploads.UploadDisabled, httpx.HTTPError) as exc:
+            typer.secho(f"Upload failed: {exc}", fg="red")
+            raise typer.Exit(1) from None
+        typer.echo(f"Uploaded ({pub.privacy}): {pub.url}")
+
+
 if __name__ == "__main__":
     app()

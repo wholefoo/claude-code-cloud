@@ -32,6 +32,10 @@ class VideoSettings(BaseSettings):
     learn_from_performance: bool = True  # nudge trend scores by your track record
     learn_min_videos: int = 5  # ...once this many videos have mature stats
     score_weights: dict[str, float] = Field(default_factory=dict)  # override scoring.WEIGHTS
+    # Direct upload (see upload.py). Off unless enabled AND an upload token is set; even then
+    # a person must press the button (or confirm in the CLI) for every upload.
+    upload_enabled: bool = False
+    upload_category_id: str = "28"  # YouTube category: 28 = Science & Technology
 
     tavily_api_key: SecretStr | None = Field(default=None, alias="TAVILY_API_KEY")
     firecrawl_api_key: SecretStr | None = Field(default=None, alias="FIRECRAWL_API_KEY")
@@ -47,6 +51,10 @@ class VideoSettings(BaseSettings):
     )
     youtube_oauth_refresh_token: SecretStr | None = Field(
         default=None, alias="YOUTUBE_OAUTH_REFRESH_TOKEN"
+    )
+    # Separate token for uploads (scope youtube.upload), same OAuth client.
+    youtube_upload_refresh_token: SecretStr | None = Field(
+        default=None, alias="YOUTUBE_UPLOAD_REFRESH_TOKEN"
     )
 
     @property
@@ -66,6 +74,20 @@ class VideoSettings(BaseSettings):
                 self.youtube_oauth_client_id,
                 self.youtube_oauth_client_secret.get_secret_value(),
                 self.youtube_oauth_refresh_token.get_secret_value(),
+            )
+        return None
+
+    @property
+    def youtube_upload_oauth(self) -> tuple[str, str, str] | None:
+        if (
+            self.youtube_oauth_client_id
+            and self.youtube_oauth_client_secret
+            and self.youtube_upload_refresh_token
+        ):
+            return (
+                self.youtube_oauth_client_id,
+                self.youtube_oauth_client_secret.get_secret_value(),
+                self.youtube_upload_refresh_token.get_secret_value(),
             )
         return None
 

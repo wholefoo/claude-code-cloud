@@ -63,12 +63,42 @@
     <p class="rb-muted">Check facts against the sources and that every clip is licensed.</p>
   </section>
   {% endif %}
+  {% if project.status == "approved" and renders %}
+  <section class="rb-card"><h2>Upload to YouTube</h2>
+  {% if not upload_enabled %}
+    <p class="rb-muted">Direct upload is off. Download the render and upload it yourself, or turn it on with <code>RB_VIDEO_UPLOAD_ENABLED</code> and a YouTube upload token (see the video README).</p>
+  {% elif not user.has_role(Role.editor) %}
+    <p class="rb-muted">An editor can upload this video.</p>
+  {% else %}
+    <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/upload"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if r.key in uploaded %} disabled{% endif %}>{{ r.key }}{% if r.key in uploaded %} (uploaded){% endif %}</option>{% endfor %}</select></label>
+      <label>Title <input name="title" maxlength="100" required value="{{ upload_defaults.title }}"></label>
+      <label>Description <textarea name="description" rows="6">{{ upload_defaults.description }}</textarea></label>
+      <label>Tags (comma-separated) <input name="tags" value="{{ upload_defaults.tags }}"></label>
+      <fieldset><legend>Visibility</legend>
+        <label class="rb-check"><input type="radio" name="privacy" value="private" checked> Private (only you)</label>
+        <label class="rb-check"><input type="radio" name="privacy" value="unlisted"> Unlisted (anyone with the link)</label>
+        <label class="rb-check"><input type="radio" name="privacy" value="public"> Public</label>
+      </fieldset>
+      <fieldset><legend>Made for kids?</legend>
+        <label class="rb-check"><input type="radio" name="made_for_kids" value="no" required> No</label>
+        <label class="rb-check"><input type="radio" name="made_for_kids" value="yes"> Yes</label>
+      </fieldset>
+      <label class="rb-check"><input type="checkbox" name="synthetic_media" value="1"{% if upload_defaults.synthetic_media %} checked{% endif %}> Disclose altered or synthetic content (AI voice)</label>
+      <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> I watched this render, checked its facts and have the rights to everything in it</label>
+      <label class="rb-check"><input type="checkbox" name="confirm_public" value="1"> If public: make it visible to everyone as soon as it's uploaded</label>
+      <button class="rb-btn rb-btn--primary">Upload to YouTube</button>
+    </form>
+    <p class="rb-muted">Uploads start private unless you choose otherwise. RedBlue never uploads on its own.</p>
+  {% endif %}
+  </section>
+  {% endif %}
   {% if project.status == "approved" or publications %}
   <section class="rb-card"><h2>Published</h2>
     <p class="rb-muted">After you upload it yourself, record where. RedBlue only reads the numbers; it never posts.</p>
     {% for item in publications %}{% set pub = item.pub %}{% set m = item.latest %}
     <div class="rb-pub">
-      <p><strong>{{ pub.platform }}</strong>{% if pub.format %} · {{ pub.format }}{% endif %} · {{ pub.published_at.strftime("%Y-%m-%d") }}<br>
+      <p><strong>{{ pub.platform }}</strong>{% if pub.format %} · {{ pub.format }}{% endif %}{% if pub.privacy %} · {{ pub.privacy }}{% endif %}{% if pub.uploaded_by %} · uploaded by {{ pub.uploaded_by }}{% endif %} · {{ pub.published_at.strftime("%Y-%m-%d") }}<br>
       <a href="{{ pub.url }}" rel="noopener noreferrer" target="_blank">{{ pub.url }}</a><br>
       {% if m %}<span>{{ "{:,}".format(m.views) }} views{% if m.likes is not none %} · {{ "{:,}".format(m.likes) }} likes{% endif %}{% if m.comments is not none %} · {{ "{:,}".format(m.comments) }} comments{% endif %}{% if m.avg_view_pct is not none %} · {{ m.avg_view_pct | round(1) }}% viewed{% endif %}</span> <span class="rb-muted">({{ m.source }}, {{ m.taken_at.strftime("%Y-%m-%d %H:%M") }} UTC)</span>{% else %}<span class="rb-muted">No numbers yet.</span>{% endif %}</p>
       <details><summary>Enter numbers</summary>
