@@ -462,8 +462,7 @@ def video_upload(
     from redblue.video.models import VideoProject
 
     pipe = _video()
-    if not sys.stdin.isatty():
-        raise typer.BadParameter("Uploading needs a person at the keyboard to confirm it.")
+    _need_person()
     with pipe.platform.db.session() as s:
         p = s.get(VideoProject, project)
         if p is None:
@@ -505,6 +504,182 @@ def video_upload(
             typer.secho(f"Upload failed: {exc}", fg="red")
             raise typer.Exit(1) from None
         typer.echo(f"Uploaded ({pub.privacy}): {pub.url}")
+
+
+def _need_person() -> None:
+    if not sys.stdin.isatty():
+        raise typer.BadParameter("Uploading needs a person at the keyboard to confirm it.")
+
+
+@video_app.command("tiktok")
+def video_tiktok(
+    project: int = typer.Argument(..., help="Approved project id"),
+    fmt: str = typer.Option("9:16", "--format", "-f", help="Which render to send"),
+    privacy: str = typer.Option("", help="Direct mode only: one of the account's options"),
+):
+    """Send an approved render to TikTok (drafts by default). Always asks you to confirm."""
+    import getpass
+
+    import httpx
+
+    from redblue.video import upload_social as social
+    from redblue.video.models import VideoProject
+
+    pipe = _video()
+    _need_person()
+    with pipe.platform.db.session() as s:
+        p = s.get(VideoProject, project)
+        if p is None:
+            raise typer.BadParameter(f"No project #{project}")
+        direct = pipe.s.tiktok_mode == "direct"
+        try:
+            if direct:
+                opts = social.tiktok_options(pipe.s)
+                typer.echo(
+                    f"Posting as {opts['nickname']}. Privacy options: " + ", ".join(opts["privacy"])
+                )
+                if not privacy:
+                    raise typer.BadParameter("Choose --privacy from the options above.")
+            req = social.TikTokRequest(
+                format=fmt,
+                caption=social.defaults(p)["tiktok_caption"] if direct else "",
+                privacy=privacy or None if direct else None,
+            )
+        except (ValueError, social.clients.PlatformError, httpx.HTTPError) as exc:
+            raise typer.BadParameter(str(exc)) from None
+        where = f"post it ({req.privacy})" if direct else "send it to your TikTok drafts"
+        confirmed = typer.confirm(f"I watched this render and have the rights to it. {where}?")
+        public_ok = (
+            not direct
+            or req.privacy == "SELF_ONLY"
+            or typer.confirm("Other people will be able to see it. Continue?")
+        )
+        if not (confirmed and public_ok):
+            raise typer.Abort()
+        try:
+            up = social.upload_tiktok(
+                s,
+                p,
+                req,
+                pipe.s,
+                confirmed_by=f"cli:{getpass.getuser()}",
+                confirmed=confirmed,
+                confirmed_public=public_ok,
+            )
+        except (
+            ValueError,
+            social.UploadDisabled,
+            social.clients.PlatformError,
+            httpx.HTTPError,
+        ) as exc:
+            typer.secho(f"Upload failed: {exc}", fg="red")
+            raise typer.Exit(1) from None
+        typer.echo(f"Upload #{up.id} sent ({up.mode}). Check it with: redblue video uploads")
+
+
+@video_app.command("instagram")
+def video_instagram(
+    project: int = typer.Argument(..., help="Approved project id"),
+    fmt: str = typer.Option("9:16", "--format", "-f", help="Which render to upload"),
+):
+    """Upload an approved render as an Instagram Reel (not public until you publish it)."""
+    import getpass
+
+    import httpx
+
+    from redblue.video import upload_social as social
+    from redblue.video.models import VideoProject
+
+    pipe = _video()
+    _need_person()
+    with pipe.platform.db.session() as s:
+        p = s.get(VideoProject, project)
+        if p is None:
+            raise typer.BadParameter(f"No project #{project}")
+        try:
+            req = social.InstagramRequest(
+                format=fmt, caption=social.defaults(p)["instagram_caption"]
+            )
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from None
+        typer.echo("Caption:\n  " + req.caption.replace("\n", "\n  "))
+        if not typer.confirm("I watched this render and have the rights to it. Upload?"):
+            raise typer.Abort()
+        try:
+            up = social.upload_instagram(
+                s, p, req, pipe.s, confirmed_by=f"cli:{getpass.getuser()}", confirmed=True
+            )
+        except (
+            ValueError,
+            social.UploadDisabled,
+            social.clients.PlatformError,
+            httpx.HTTPError,
+        ) as exc:
+            typer.secho(f"Upload failed: {exc}", fg="red")
+            raise typer.Exit(1) from None
+        typer.echo(
+            f"Upload #{up.id} is processing (not public). "
+            f"Publish it with: redblue video instagram-publish {up.id}"
+        )
+
+
+@video_app.command("uploads")
+def video_uploads():
+    """List TikTok/Instagram uploads and check their status (read-only)."""
+    import httpx
+    from sqlalchemy import select
+
+    from redblue.video import upload_social as social
+    from redblue.video.models import Upload
+
+    pipe = _video()
+    with pipe.platform.db.session() as s:
+        for up in s.scalars(select(Upload).order_by(Upload.id.desc()).limit(30)):
+            try:
+                social.refresh(s, up, pipe.s)
+            except (
+                social.clients.MissingKey,
+                social.clients.PlatformError,
+                httpx.HTTPError,
+            ) as exc:
+                typer.secho(f"  #{up.id}: status check failed: {exc}", fg="yellow")
+            typer.echo(
+                f"  #{up.id:<4} project {up.project_id:<4} {up.platform:9} {up.format:5} "
+                f"{up.status:10} {up.url or ''}"
+            )
+
+
+@video_app.command("instagram-publish")
+def video_instagram_publish(upload: int = typer.Argument(..., help="Upload id")):
+    """Make an uploaded Reel public on Instagram. Always asks you to confirm."""
+    import getpass
+
+    import httpx
+
+    from redblue.video import upload_social as social
+    from redblue.video.models import Upload
+
+    pipe = _video()
+    _need_person()
+    with pipe.platform.db.session() as s:
+        up = s.get(Upload, upload)
+        if up is None:
+            raise typer.BadParameter(f"No upload #{upload}")
+        if not typer.confirm("Make this Reel PUBLIC on Instagram now?"):
+            raise typer.Abort()
+        try:
+            social.publish_instagram(
+                s, up, pipe.s, confirmed_by=f"cli:{getpass.getuser()}", confirmed=True
+            )
+        except (
+            ValueError,
+            social.UploadDisabled,
+            social.clients.PlatformError,
+            httpx.HTTPError,
+        ) as exc:
+            typer.secho(f"Publish failed: {exc}", fg="red")
+            raise typer.Exit(1) from None
+        typer.echo(f"Published: {up.url or '(link pending)'}")
 
 
 if __name__ == "__main__":

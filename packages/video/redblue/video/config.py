@@ -36,6 +36,15 @@ class VideoSettings(BaseSettings):
     # a person must press the button (or confirm in the CLI) for every upload.
     upload_enabled: bool = False
     upload_category_id: str = "28"  # YouTube category: 28 = Science & Technology
+    # TikTok: "inbox" sends the video to the creator's TikTok drafts to finish in the app
+    # (scope video.upload); "direct" posts it (scope video.publish; private until audited).
+    tiktok_mode: Literal["inbox", "direct"] = "inbox"
+    tiktok_username: str = ""  # optional, for linking finished inbox posts
+    tiktok_token_file: Path | None = None  # optional: where rotated refresh tokens are kept
+    instagram_graph_host: Literal["graph.facebook.com", "graph.instagram.com"] = (
+        "graph.facebook.com"  # Facebook Login; use graph.instagram.com for Instagram Login
+    )
+    instagram_api_version: str = "v25.0"
 
     tavily_api_key: SecretStr | None = Field(default=None, alias="TAVILY_API_KEY")
     firecrawl_api_key: SecretStr | None = Field(default=None, alias="FIRECRAWL_API_KEY")
@@ -52,6 +61,11 @@ class VideoSettings(BaseSettings):
     youtube_oauth_refresh_token: SecretStr | None = Field(
         default=None, alias="YOUTUBE_OAUTH_REFRESH_TOKEN"
     )
+    tiktok_client_key: str | None = Field(default=None, alias="TIKTOK_CLIENT_KEY")
+    tiktok_client_secret: SecretStr | None = Field(default=None, alias="TIKTOK_CLIENT_SECRET")
+    tiktok_refresh_token: SecretStr | None = Field(default=None, alias="TIKTOK_REFRESH_TOKEN")
+    instagram_access_token: SecretStr | None = Field(default=None, alias="INSTAGRAM_ACCESS_TOKEN")
+    instagram_user_id: str | None = Field(default=None, alias="INSTAGRAM_USER_ID")
     # Separate token for uploads (scope youtube.upload), same OAuth client.
     youtube_upload_refresh_token: SecretStr | None = Field(
         default=None, alias="YOUTUBE_UPLOAD_REFRESH_TOKEN"
@@ -89,6 +103,23 @@ class VideoSettings(BaseSettings):
                 self.youtube_oauth_client_secret.get_secret_value(),
                 self.youtube_upload_refresh_token.get_secret_value(),
             )
+        return None
+
+    @property
+    def tiktok_credentials(self) -> tuple[str, str, str] | None:
+        """(client key, secret, refresh token). A token file, if set and present, wins over
+        the environment, because TikTok may rotate refresh tokens."""
+        refresh = self.tiktok_refresh_token.get_secret_value() if self.tiktok_refresh_token else ""
+        if self.tiktok_token_file and self.tiktok_token_file.is_file():
+            refresh = self.tiktok_token_file.read_text(encoding="utf-8").strip() or refresh
+        if self.tiktok_client_key and self.tiktok_client_secret and refresh:
+            return self.tiktok_client_key, self.tiktok_client_secret.get_secret_value(), refresh
+        return None
+
+    @property
+    def instagram_credentials(self) -> tuple[str, str] | None:
+        if self.instagram_access_token and self.instagram_user_id:
+            return self.instagram_access_token.get_secret_value(), self.instagram_user_id
         return None
 
     def key(self, name: str) -> str | None:

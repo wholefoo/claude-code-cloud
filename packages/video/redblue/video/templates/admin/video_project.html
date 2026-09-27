@@ -93,6 +93,76 @@
   {% endif %}
   </section>
   {% endif %}
+  {% if project.status == "approved" and renders and user.has_role(Role.editor) %}
+  <section class="rb-card"><h2>Upload to TikTok</h2>
+  {% if not social.tiktok %}
+    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code> and the TikTok credentials (see the video README), or upload the download yourself.</p>
+  {% elif tiktok_mode == "direct" and tiktok_opts and tiktok_opts.error %}
+    <p class="rb-error" role="alert">Couldn't load your TikTok account settings: {{ tiktok_opts.error }}</p>
+  {% else %}
+    <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/tiktok"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      {% if tiktok_mode == "direct" %}<p>Posting as <strong>{{ tiktok_opts.nickname }}</strong>{% if tiktok_opts.username %} (@{{ tiktok_opts.username }}){% endif %}</p>{% endif %}
+      <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if r.key == "9:16" %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
+      {% if tiktok_mode == "direct" %}
+      <label>Caption <textarea name="caption" rows="4" maxlength="2200">{{ social_defaults.tiktok_caption }}</textarea></label>
+      <label>Who can view this video <select name="privacy" required><option value="" selected disabled>Choose…</option>{% for o in tiktok_opts.privacy %}<option value="{{ o }}">{{ privacy_labels.get(o, o) }}</option>{% endfor %}</select></label>
+      <fieldset><legend>Allow users to</legend>
+        <label class="rb-check"><input type="checkbox" name="allow_comments" value="1"{% if tiktok_opts.comment_disabled %} disabled{% endif %}> Comment</label>
+        <label class="rb-check"><input type="checkbox" name="allow_duet" value="1"{% if tiktok_opts.duet_disabled %} disabled{% endif %}> Duet</label>
+        <label class="rb-check"><input type="checkbox" name="allow_stitch" value="1"{% if tiktok_opts.stitch_disabled %} disabled{% endif %}> Stitch</label>
+      </fieldset>
+      <fieldset><legend>Disclose commercial content</legend>
+        <label class="rb-check"><input type="checkbox" name="brand_organic" value="1"> Your brand (promoting yourself or your business)</label>
+        <label class="rb-check"><input type="checkbox" name="brand_content" value="1"> Branded content (paid partnership; can't be private)</label>
+      </fieldset>
+      <label class="rb-check"><input type="checkbox" name="is_aigc" value="1" checked> Label as AI-generated content</label>
+      <label class="rb-check"><input type="checkbox" name="confirm_public" value="1"> If not "Only me": other people will see it once TikTok processes it</label>
+      <p class="rb-muted">By posting, you agree to TikTok's Music Usage Confirmation (and Branded Content Policy if you disclose branded content). Unaudited TikTok apps can only post as "Only me".</p>
+      {% else %}
+      <input type="hidden" name="is_aigc" value="1">
+      <p class="rb-muted">The video goes to your TikTok drafts (inbox). You add the caption, sound and privacy, and post it in the TikTok app.</p>
+      {% endif %}
+      <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> I watched this render, checked its facts and have the rights to everything in it</label>
+      <button class="rb-btn rb-btn--primary">{{ "Post to TikTok" if tiktok_mode == "direct" else "Send to TikTok drafts" }}</button>
+    </form>
+  {% endif %}
+  </section>
+  <section class="rb-card"><h2>Upload to Instagram</h2>
+  {% if not social.instagram %}
+    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code> and the Instagram credentials (see the video README), or upload the download yourself.</p>
+  {% else %}
+    <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/instagram"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if r.key == "9:16" %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
+      <label>Caption <textarea name="caption" rows="4" maxlength="2200">{{ social_defaults.instagram_caption }}</textarea></label>
+      <label class="rb-check"><input type="checkbox" name="share_to_feed" value="1" checked> Also show in the main feed</label>
+      <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> I watched this render, checked its facts and have the rights to everything in it</label>
+      <button class="rb-btn rb-btn--primary">Upload Reel (not public yet)</button>
+    </form>
+    <p class="rb-muted">Step 1 uploads it for processing. Instagram posts are always public, so publishing is a separate step below.</p>
+  {% endif %}
+  </section>
+  {% endif %}
+  {% if social_uploads %}
+  <section class="rb-card"><h2>Uploads</h2>
+  {% for up in social_uploads %}
+    <div class="rb-pub">
+      <p><strong>{{ up.platform }}</strong> · {{ up.format }} · <span class="rb-status-pill{% if up.status == 'published' %} rb-status-pill--published{% endif %}">{{ up.status | replace("_", " ") }}</span>{% if up.privacy %} · {{ privacy_labels.get(up.privacy, up.privacy) }}{% endif %}<br>
+      <span class="rb-muted">by {{ up.uploaded_by }}{% if up.published_by %}, published by {{ up.published_by }}{% endif %}, {{ up.created_at.strftime("%Y-%m-%d %H:%M") }} UTC</span>
+      {% if up.url %}<br><a href="{{ up.url }}" rel="noopener noreferrer" target="_blank">{{ up.url }}</a>{% endif %}
+      {% if up.error %}<br><span class="rb-error">{{ up.error }}</span>{% endif %}
+      {% if up.status == "in_inbox" %}<br>Finish it in the TikTok app, then record the post's URL under Published.{% endif %}</p>
+      {% if up.status in ("processing", "in_inbox", "ready") %}
+      <form method="post" action="/admin/video/uploads/{{ up.id }}/refresh"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rb-btn">Check status</button></form>
+      {% endif %}
+      {% if up.platform == "instagram" and up.status in ("processing", "ready") and user.has_role(Role.editor) %}
+      <form class="rb-form" method="post" action="/admin/video/uploads/{{ up.id }}/publish"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> Make this Reel public on Instagram now</label>
+        <button class="rb-btn rb-btn--primary">Publish to Instagram</button></form>
+      {% endif %}
+    </div>
+  {% endfor %}
+  </section>
+  {% endif %}
   {% if project.status == "approved" or publications %}
   <section class="rb-card"><h2>Published</h2>
     <p class="rb-muted">After you upload it yourself, record where. RedBlue only reads the numbers; it never posts.</p>

@@ -85,3 +85,28 @@ class MetricSnapshot(Base):
     shares: Mapped[int | None] = mapped_column(Integer, nullable=True)
     avg_view_pct: Mapped[float | None] = mapped_column(Float, nullable=True)  # retention 0–100
     avg_view_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class Upload(Base, TimestampMixin):
+    """A person-confirmed upload to TikTok or Instagram, which finish asynchronously.
+
+    status: processing → in_inbox (TikTok drafts: finish in the app) | ready (Instagram:
+    waiting for a person to press Publish) → published; or failed / expired."""
+
+    __tablename__ = "rb_video_uploads"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("rb_video_projects.id", ondelete="CASCADE"), index=True
+    )
+    platform: Mapped[str] = mapped_column(String(20))
+    format: Mapped[str] = mapped_column(String(10))
+    mode: Mapped[str] = mapped_column(String(20))  # inbox / direct / reel
+    status: Mapped[str] = mapped_column(String(20), default="processing", index=True)
+    external_ref: Mapped[str] = mapped_column(String(200))  # TikTok publish_id / IG container
+    url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    privacy: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    error: Mapped[str] = mapped_column(Text, default="")
+    uploaded_by: Mapped[str] = mapped_column(String(200))
+    published_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    meta: Mapped[dict] = mapped_column(JSON, default=dict)
