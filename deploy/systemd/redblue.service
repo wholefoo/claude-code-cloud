@@ -1,0 +1,19 @@
+[Unit]
+Description=RedBlue web
+After=network.target postgresql.service
+
+[Service]
+User=redblue
+Group=redblue
+WorkingDirectory=/srv/redblue/site
+EnvironmentFile=/etc/redblue/env
+ExecStart=/srv/redblue/venv/bin/uvicorn redblue.platform.app:app --host 127.0.0.1 --port 8000 --proxy-headers --workers 2
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/redblue/site
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

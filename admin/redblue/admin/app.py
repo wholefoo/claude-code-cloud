@@ -687,12 +687,12 @@ def growth_utm(
 ) -> HTMLResponse:
     try:
         link = utm.build_utm_url(url, source=source, medium=medium, campaign=campaign)
-        return HTMLResponse(f'<p class="rb-form-ok"><code>{_esc(link)}</code></p>')
+        return HTMLResponse(f'<p class="rb-form-ok"><code>{_escape_html(link)}</code></p>')
     except ValueError as exc:
-        return HTMLResponse(f'<p class="rb-error" role="alert">{_esc(str(exc))}</p>')
+        return HTMLResponse(f'<p class="rb-error" role="alert">{_escape_html(str(exc))}</p>')
 
 
-def _esc(s: str) -> str:
+def _escape_html(s: str) -> str:
     from markupsafe import escape
 
     return str(escape(s))

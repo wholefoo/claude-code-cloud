@@ -133,6 +133,26 @@ class SecurityHeadersMiddleware:
         await self.app(scope, receive, send_wrapper)
 
 
+class HeadAsGetMiddleware:
+    """Answer HEAD like GET without a body (crawlers and uptime monitors use HEAD)."""
+
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope["method"] != "HEAD":
+            await self.app(scope, receive, send)
+            return
+        scope = dict(scope, method="GET")
+
+        async def send_wrapper(message: Message) -> None:
+            if message["type"] == "http.response.body":
+                message = {**message, "body": b""}
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+
 # ---------------------------------------------------------------- CSRF
 
 CSRF_COOKIE = "rb_csrf"

@@ -168,14 +168,14 @@ def growth_router() -> APIRouter:
 
 
 def _form_reply(is_htmx: bool, message: str, status: int):
+    if is_htmx and status == 200:
+        return HTMLResponse(f'<p class="rb-form-ok" role="status">{escape(message)}</p>')
     if is_htmx:
-        cls = "rb-form-ok" if status == 200 else "rb-error"
-        role = "status" if status == 200 else "alert"
-        # HTMX swaps the form; keep it on error so the visitor can fix the input.
+        # Keep the form on error (swap the message in before it) so the visitor can fix it.
         return HTMLResponse(
-            f'<p class="{cls}" role="{role}">{escape(message)}</p>',
-            status_code=200 if status == 200 else status,
-            headers={} if status == 200 else {"HX-Reswap": "beforebegin"},
+            f'<p class="rb-error" role="alert">{escape(message)}</p>',
+            status_code=status,
+            headers={"HX-Reswap": "beforebegin"},
         )
     if status == 200:
         return RedirectResponse("/thank-you", status_code=303)

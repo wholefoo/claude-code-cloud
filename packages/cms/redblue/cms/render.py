@@ -45,7 +45,7 @@ def inline(text: str | None, site_host: str = "") -> Markup:
     out = _BOLD.sub(r"<strong>\1</strong>", out)
     out = _ITALIC.sub(r"<em>\1</em>", out)
     out = re.sub(r"\x00(\d+)\x00", lambda m: codes[int(m.group(1))], out)
-    return Markup(out)  # noqa: S704 - built only from escaped input and fixed tags
+    return Markup(out)  # noqa: S704  # nosec B704 - built only from escaped input and fixed tags
 
 
 def anchor_for(block: dict) -> str:

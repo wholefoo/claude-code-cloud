@@ -16,7 +16,7 @@ def dumps_for_script(data: Any) -> Markup:
     raw = json.dumps(data, ensure_ascii=False, separators=(",", ":"), default=str)
     raw = raw.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     raw = raw.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
-    return Markup(raw)  # noqa: S704 - JSON with HTML-significant characters escaped
+    return Markup(raw)  # noqa: S704  # nosec B704 - JSON with HTML-significant characters escaped
 
 
 def organization(site: dict) -> dict:

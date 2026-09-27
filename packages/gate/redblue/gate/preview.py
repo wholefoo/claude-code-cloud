@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import secrets
 import shlex
 import socket
 import subprocess
@@ -128,14 +129,16 @@ class Preview:
     # ------------------------------------------------------------------ lifecycle
 
     def _throwaway_env(self) -> dict[str, str]:
-        assert self._tmp is not None
+        if self._tmp is None:
+            raise PreviewError("Preview temp directory missing")
         tmp = Path(self._tmp.name)
         env = {
             "RB_ENV": "test",
             "RB_DATABASE_URL": f"sqlite:///{tmp / 'preview.db'}",
             "RB_MEDIA_DIR": str(tmp / "media"),
+            "RB_STORAGE_DIR": str(tmp / "media"),
             "RB_UPLOAD_DIR": str(tmp / "uploads"),
-            "RB_SECRET_KEY": "redblue-preview-throwaway-key",
+            "RB_SECRET_KEY": secrets.token_urlsafe(48),  # fresh per preview
             "RB_PREVIEW": "1",
         }
         env.update(self.extra_env)

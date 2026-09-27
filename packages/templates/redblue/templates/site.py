@@ -64,7 +64,7 @@ class BlockContext:
 
     def form(self, block: dict) -> Markup:
         tpl = self.templates.env.get_template("partials/form.html")
-        return Markup(tpl.render(form=block, csrf_token=self.csrf_token))  # noqa: S704
+        return Markup(tpl.render(form=block, csrf_token=self.csrf_token))  # noqa: S704  # nosec B704
 
 
 def _site(p: Platform, db: Session, locale: str) -> dict:
@@ -414,6 +414,25 @@ def site_router(r: SiteRenderer) -> APIRouter:
         tokens = Tokens(**request.app.state.rb.settings.theme_tokens)
         return Response(
             tokens.css(), media_type="text/css", headers={"Cache-Control": "public, max-age=300"}
+        )
+
+    @router.get("/_rb/favicon.svg")
+    @router.get("/favicon.ico")
+    def favicon(request: Request) -> Response:
+        from html import escape
+
+        s = request.app.state.rb.settings
+        tokens = Tokens(**s.theme_tokens)
+        letter = escape((s.site_name.strip()[:1] or "R").upper())
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
+            f'<rect width="64" height="64" rx="14" fill="{tokens.light.primary}"/>'
+            '<text x="32" y="44" font-family="system-ui,sans-serif" font-size="36" '
+            f'font-weight="700" text-anchor="middle" fill="{tokens.light.primary_text}">'
+            f"{letter}</text></svg>"
+        )
+        return Response(
+            svg, media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"}
         )
 
     @router.get("/media/{key}")

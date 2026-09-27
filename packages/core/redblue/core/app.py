@@ -10,7 +10,7 @@ from redblue.core.context import Platform
 from redblue.core.db import Database
 from redblue.core.email import ConsoleEmail, SMTPEmail
 from redblue.core.jobs import JobQueue
-from redblue.core.security import CSRFMiddleware, SecurityHeadersMiddleware
+from redblue.core.security import CSRFMiddleware, HeadAsGetMiddleware, SecurityHeadersMiddleware
 from redblue.core.storage import LocalStorage, S3Storage
 
 CSRF_EXEMPT = ("/_rb/beacon", "/webhooks/", "/_rb/health")
@@ -62,6 +62,7 @@ def create_core_app(
         max_body=settings.max_upload_bytes + 1024 * 1024,
     )
     app.add_middleware(SecurityHeadersMiddleware, hsts=settings.secure_cookies)
+    app.add_middleware(HeadAsGetMiddleware)
 
     @app.get("/_rb/health", include_in_schema=False)
     def health() -> dict:

@@ -1,0 +1,34 @@
+# Render Blueprint: New → Blueprint → point at this repo and this file.
+services:
+  - type: web
+    name: redblue
+    runtime: docker
+    dockerfilePath: ./deploy/Dockerfile
+    healthCheckPath: /_rb/health
+    envVars:
+      - key: RB_ENV
+        value: prod
+      - key: RB_SECRET_KEY
+        generateValue: true
+      - key: RB_DATABASE_URL
+        fromDatabase: { name: redblue-db, property: connectionString }
+      - key: RB_BASE_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+    disk: { name: media, mountPath: /srv/site/media, sizeGB: 5 }
+  - type: worker
+    name: redblue-worker
+    runtime: docker
+    dockerfilePath: ./deploy/Dockerfile
+    dockerCommand: redblue worker
+    envVars:
+      - key: RB_ENV
+        value: prod
+      - key: RB_SECRET_KEY
+        fromService: { type: web, name: redblue, envVarKey: RB_SECRET_KEY }
+      - key: RB_DATABASE_URL
+        fromDatabase: { name: redblue-db, property: connectionString }
+databases:
+  - name: redblue-db
+    plan: basic-256mb

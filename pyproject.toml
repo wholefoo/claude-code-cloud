@@ -20,4 +20,5 @@ known-first-party = ["redblue"]
 [tool.pytest.ini_options]
 testpaths = ["packages", "admin", "evals"]
 addopts = "-q --import-mode=importlib"
+norecursedirs = ["project_template", ".*", "*.egg-info", "node_modules"]
 filterwarnings = ["ignore::DeprecationWarning"]

@@ -1,0 +1,5 @@
+.env
+*.db
+media/
+__pycache__/
+.redblue/
