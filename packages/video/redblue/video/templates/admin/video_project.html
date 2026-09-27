@@ -141,6 +141,38 @@
     <p class="rb-muted">Step 1 uploads it for processing. Instagram posts are always public, so publishing is a separate step below.</p>
   {% endif %}
   </section>
+  <section class="rb-card"><h2>Upload to Facebook</h2>
+  {% if not social.facebook %}
+    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code> and the Facebook Page credentials (see the video README), or upload the download yourself.</p>
+  {% else %}
+    <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/facebook"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if r.key == "9:16" %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
+      <label>Title <input name="title" maxlength="255" value="{{ social_defaults.title }}"></label>
+      <label>Description <textarea name="description" rows="4" maxlength="5000">{{ social_defaults.facebook_description }}</textarea></label>
+      <fieldset><legend>On your Page</legend>
+        <label class="rb-check"><input type="radio" name="publish_now" value="" checked> Save as a draft (publish it yourself in Meta Business Suite)</label>
+        <label class="rb-check"><input type="radio" name="publish_now" value="1"> Publish now</label>
+      </fieldset>
+      <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> I watched this render, checked its facts and have the rights to everything in it</label>
+      <label class="rb-check"><input type="checkbox" name="confirm_public" value="1"> If publishing now: it will be public on the Page right away</label>
+      <button class="rb-btn rb-btn--primary">Upload Reel to Page</button>
+    </form>
+  {% endif %}
+  </section>
+  <section class="rb-card"><h2>Upload to LinkedIn</h2>
+  {% if not social.linkedin %}
+    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code> and the LinkedIn credentials (see the video README), or upload the download yourself.</p>
+  {% else %}
+    <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/linkedin"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if loop.first %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
+      <label>Video title <input name="title" maxlength="200" value="{{ social_defaults.title }}"></label>
+      <label>Post text <textarea name="commentary" rows="4" maxlength="3000">{{ social_defaults.linkedin_commentary }}</textarea></label>
+      <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> I watched this render, checked its facts and have the rights to everything in it</label>
+      <button class="rb-btn rb-btn--primary">Upload video (not posted yet)</button>
+    </form>
+    <p class="rb-muted">Step 1 uploads it for processing. You choose who sees it and post it in a separate step below.</p>
+  {% endif %}
+  </section>
   {% endif %}
   {% if social_uploads %}
   <section class="rb-card"><h2>Uploads</h2>
@@ -150,14 +182,24 @@
       <span class="rb-muted">by {{ up.uploaded_by }}{% if up.published_by %}, published by {{ up.published_by }}{% endif %}, {{ up.created_at.strftime("%Y-%m-%d %H:%M") }} UTC</span>
       {% if up.url %}<br><a href="{{ up.url }}" rel="noopener noreferrer" target="_blank">{{ up.url }}</a>{% endif %}
       {% if up.error %}<br><span class="rb-error">{{ up.error }}</span>{% endif %}
-      {% if up.status == "in_inbox" %}<br>Finish it in the TikTok app, then record the post's URL under Published.{% endif %}</p>
-      {% if up.status in ("processing", "in_inbox", "ready") %}
+      {% if up.status == "in_inbox" %}<br>Finish it in the TikTok app, then record the post's URL under Published.{% endif %}
+      {% if up.status == "draft" %}<br>Saved as a draft on your Page: publish it in Meta Business Suite. Check status afterwards to link it.{% endif %}</p>
+      {% if up.status in ("processing", "in_inbox", "ready", "draft") %}
       <form method="post" action="/admin/video/uploads/{{ up.id }}/refresh"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rb-btn">Check status</button></form>
       {% endif %}
       {% if up.platform == "instagram" and up.status in ("processing", "ready") and user.has_role(Role.editor) %}
       <form class="rb-form" method="post" action="/admin/video/uploads/{{ up.id }}/publish"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> Make this Reel public on Instagram now</label>
         <button class="rb-btn rb-btn--primary">Publish to Instagram</button></form>
+      {% endif %}
+      {% if up.platform == "linkedin" and up.status in ("processing", "ready") and user.has_role(Role.editor) %}
+      <form class="rb-form" method="post" action="/admin/video/uploads/{{ up.id }}/publish"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <fieldset><legend>Who can see the post</legend>
+          <label class="rb-check"><input type="radio" name="visibility" value="PUBLIC" required> Anyone</label>
+          <label class="rb-check"><input type="radio" name="visibility" value="CONNECTIONS"> Connections only</label>
+        </fieldset>
+        <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> Post this on LinkedIn now</label>
+        <button class="rb-btn rb-btn--primary">Post to LinkedIn</button></form>
       {% endif %}
     </div>
   {% endfor %}

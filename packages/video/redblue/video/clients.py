@@ -473,6 +473,204 @@ class Instagram:
         return self._json(r).get("permalink")
 
 
+class FacebookPage:
+    """Facebook Page Reels (Graph API ``video_reels``): start, transfer, finish. Finishing
+    as ``DRAFT`` keeps it off the Page until someone publishes it in Meta Business Suite."""
+
+    def __init__(
+        self,
+        credentials: tuple[str, str] | None,
+        version: str = "v25.0",
+        client: httpx.Client | None = None,
+    ):
+        if not credentials:
+            raise MissingKey("Set FACEBOOK_PAGE_ACCESS_TOKEN and FACEBOOK_PAGE_ID to post Reels.")
+        self.token, self.page_id = credentials
+        if not re.fullmatch(r"\d{1,30}", self.page_id):
+            raise ValueError("FACEBOOK_PAGE_ID must be the numeric Page id.")
+        if not re.fullmatch(r"v\d{1,3}\.\d", version):
+            raise ValueError("Facebook API version looks like v25.0.")
+        self.base, self.http = f"https://graph.facebook.com/{version}", _client(client)
+
+    @property
+    def _auth(self) -> dict:
+        return {"Authorization": f"Bearer {self.token}"}
+
+    def _json(self, r: httpx.Response) -> dict:
+        body = r.json() if r.content else {}
+        if r.status_code >= 400 or "error" in body:
+            err = body.get("error") or {}
+            raise PlatformError(f"Facebook: {err.get('message') or r.status_code}")
+        return body
+
+    def upload(self, path, *, description: str, title: str, state: str) -> str:
+        if state not in ("DRAFT", "PUBLISHED"):
+            raise ValueError("Unsupported Facebook video state.")
+        r = self.http.post(
+            f"{self.base}/{self.page_id}/video_reels",
+            headers=self._auth,
+            data={"upload_phase": "start"},
+        )
+        body = self._json(r)
+        video_id, url = str(body.get("video_id", "")), body.get("upload_url", "")
+        if not re.fullmatch(r"\d{1,40}", video_id):
+            raise PlatformError("Facebook didn't return a video id.")
+        _https_host(url, ("rupload.facebook.com",))
+        data = path.read_bytes()
+        r = self.http.post(
+            url,
+            headers={
+                "Authorization": f"OAuth {self.token}",
+                "offset": "0",
+                "file_size": str(len(data)),
+            },
+            content=data,
+            timeout=httpx.Timeout(600.0, connect=10.0),
+        )
+        self._json(r)
+        r = self.http.post(
+            f"{self.base}/{self.page_id}/video_reels",
+            headers=self._auth,
+            data={
+                "upload_phase": "finish",
+                "video_id": video_id,
+                "video_state": state,
+                "description": description,
+                "title": title,
+            },
+        )
+        if not self._json(r).get("success", True):
+            raise PlatformError("Facebook didn't accept the Reel.")
+        return video_id
+
+    def status(self, video_id: str) -> dict:
+        r = self.http.get(
+            f"{self.base}/{video_id}", headers=self._auth, params={"fields": "status"}
+        )
+        return self._json(r).get("status") or {}
+
+
+def little_text(text: str) -> str:
+    """Escape LinkedIn's "little text" reserved characters so commentary is shown as typed."""
+    return re.sub(r"([\\|{}@\[\]()<>#*_~])", r"\\\1", text)
+
+
+class LinkedIn:
+    """LinkedIn Videos API upload, then (separately, on a person's click) a Posts API post."""
+
+    API = "https://api.linkedin.com/rest"
+    _URN = re.compile(r"urn:li:(person|organization):[A-Za-z0-9_-]{1,64}")
+
+    def __init__(
+        self,
+        credentials: tuple[str, str] | None,
+        version: str = "202606",
+        client: httpx.Client | None = None,
+    ):
+        if not credentials:
+            raise MissingKey("Set LINKEDIN_ACCESS_TOKEN and LINKEDIN_AUTHOR_URN to post videos.")
+        self.token, self.author = credentials
+        if not self._URN.fullmatch(self.author):
+            raise ValueError(
+                "LINKEDIN_AUTHOR_URN looks like urn:li:person:… or urn:li:organization:…"
+            )
+        if not re.fullmatch(r"\d{6}", version):
+            raise ValueError("LinkedIn API version looks like 202606 (YYYYMM).")
+        self.version, self.http = version, _client(client)
+
+    @property
+    def _headers(self) -> dict:
+        return {
+            "Authorization": f"Bearer {self.token}",
+            "LinkedIn-Version": self.version,
+            "X-Restli-Protocol-Version": "2.0.0",
+        }
+
+    def _json(self, r: httpx.Response) -> dict:
+        body = r.json() if r.content else {}
+        if r.status_code >= 400:
+            raise PlatformError(f"LinkedIn: {body.get('message') or r.status_code}")
+        return body
+
+    def upload(self, path) -> str:
+        data = path.read_bytes()
+        r = self.http.post(
+            f"{self.API}/videos",
+            params={"action": "initializeUpload"},
+            headers=self._headers,
+            json={
+                "initializeUploadRequest": {
+                    "owner": self.author,
+                    "fileSizeBytes": len(data),
+                    "uploadCaptions": False,
+                    "uploadThumbnail": False,
+                }
+            },
+        )
+        value = self._json(r).get("value") or {}
+        video, token = value.get("video", ""), value.get("uploadToken", "")
+        if not str(video).startswith("urn:li:video:"):
+            raise PlatformError("LinkedIn didn't return a video id.")
+        etags = []
+        for part in sorted(value.get("uploadInstructions", []), key=lambda p: p["firstByte"]):
+            url = _https_host(part["uploadUrl"], ("linkedin.com", "licdn.com"))
+            first, last = int(part["firstByte"]), int(part["lastByte"])
+            r = self.http.put(
+                url,
+                headers={"Content-Type": "application/octet-stream"},
+                content=data[first : last + 1],
+                timeout=httpx.Timeout(600.0, connect=10.0),
+            )
+            r.raise_for_status()
+            etags.append(r.headers.get("etag", ""))
+        if not etags:
+            raise PlatformError("LinkedIn didn't return upload instructions.")
+        r = self.http.post(
+            f"{self.API}/videos",
+            params={"action": "finalizeUpload"},
+            headers=self._headers,
+            json={
+                "finalizeUploadRequest": {
+                    "video": video,
+                    "uploadToken": token,
+                    "uploadedPartIds": etags,
+                }
+            },
+        )
+        self._json(r)
+        return video
+
+    def video_status(self, video: str) -> dict:
+        r = self.http.get(f"{self.API}/videos/{quote(video, safe='')}", headers=self._headers)
+        return self._json(r)
+
+    def post(self, *, video: str, commentary: str, title: str, visibility: str) -> str:
+        if visibility not in ("PUBLIC", "CONNECTIONS"):
+            raise ValueError("LinkedIn visibility must be PUBLIC or CONNECTIONS.")
+        r = self.http.post(
+            f"{self.API}/posts",
+            headers={**self._headers, "Content-Type": "application/json"},
+            json={
+                "author": self.author,
+                "commentary": little_text(commentary),
+                "visibility": visibility,
+                "distribution": {
+                    "feedDistribution": "MAIN_FEED",
+                    "targetEntities": [],
+                    "thirdPartyDistributionChannels": [],
+                },
+                "content": {"media": {"title": title[:200], "id": video}},
+                "lifecycleState": "PUBLISHED",
+                "isReshareDisabledByAuthor": False,
+            },
+        )
+        self._json(r)
+        urn = r.headers.get("x-restli-id", "")
+        if not re.fullmatch(r"urn:li:(share|ugcPost):\d{1,40}", urn):
+            raise PlatformError("LinkedIn didn't return the post id.")
+        return urn
+
+
 def _int(value) -> int | None:
     try:
         return int(value) if value is not None and value != "" else None
