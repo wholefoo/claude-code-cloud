@@ -186,6 +186,22 @@
     <p class="rb-muted">Step 1 uploads it for processing; you post it in a separate step below. X charges per post on its pay-per-use plan.</p>
   {% endif %}
   </section>
+  <section class="rb-card"><h2>Upload to Pinterest</h2>
+  {% if not social.pinterest %}
+    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code>, the Pinterest credentials and <code>RB_VIDEO_PINTEREST_BOARD_ID</code> (see the video README), or upload the download yourself.</p>
+  {% else %}
+    <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/pinterest"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if r.key == "9:16" %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
+      <label>Title <input name="title" maxlength="100" value="{{ social_defaults.title[:100] }}"></label>
+      <label>Description <textarea name="description" rows="4" maxlength="800">{{ social_defaults.pinterest_description }}</textarea></label>
+      <label>Alt text (describe the video) <input name="alt_text" maxlength="500"></label>
+      <label>Link (optional, https) <input name="link" type="url" maxlength="2048" placeholder="https://your-site.example/article"></label>
+      <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> I watched this render, checked its facts and have the rights to everything in it</label>
+      <button class="rb-btn rb-btn--primary">Upload video (not pinned yet)</button>
+    </form>
+    <p class="rb-muted">Step 1 uploads it for processing; you pin it to the board in a separate step below. Who sees the Pin depends on the board (public or secret).</p>
+  {% endif %}
+  </section>
   <section class="rb-card"><h2>Upload to Threads</h2>
   {% if not social.threads %}
     <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code> and the Threads credentials (see the video README), or upload the download yourself.</p>
@@ -224,6 +240,11 @@
       <form class="rb-form" method="post" action="/admin/video/uploads/{{ up.id }}/publish"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> Post this publicly on {{ "X" if up.platform == "x" else "Threads" }} now</label>
         <button class="rb-btn rb-btn--primary">Post to {{ "X" if up.platform == "x" else "Threads" }}</button></form>
+      {% endif %}
+      {% if up.platform == "pinterest" and up.status in ("processing", "ready") and user.has_role(Role.editor) %}
+      <form class="rb-form" method="post" action="/admin/video/uploads/{{ up.id }}/publish"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> Pin this to the board now</label>
+        <button class="rb-btn rb-btn--primary">Pin to Pinterest</button></form>
       {% endif %}
       {% if up.platform == "linkedin" and up.status in ("processing", "ready") and user.has_role(Role.editor) %}
       <form class="rb-form" method="post" action="/admin/video/uploads/{{ up.id }}/publish"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">

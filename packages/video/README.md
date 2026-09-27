@@ -14,7 +14,8 @@ Trends
 ```
 
 "You upload" means by hand, or with the optional upload buttons for YouTube, TikTok,
-Instagram, Facebook, LinkedIn, X and Threads, which a person presses for each video.
+Instagram, Facebook, LinkedIn, X, Threads and Pinterest, which a person presses for each
+video.
 
 ## Quickstart
 
@@ -52,6 +53,7 @@ That's useful for testing, and you add keys as you go.
 | `LINKEDIN_ACCESS_TOKEN` + `LINKEDIN_AUTHOR_URN` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Upload an approved render, then post it with a second click | You upload it yourself |
 | `X_CLIENT_ID` (+ `X_CLIENT_SECRET`) + `X_REFRESH_TOKEN` + `RB_VIDEO_X_TOKEN_FILE` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Upload an approved render, then post it with a second click (X charges per post) | You upload it yourself |
 | `THREADS_ACCESS_TOKEN` + `THREADS_USER_ID` + a public https site address (+ `RB_VIDEO_UPLOAD_ENABLED`) | Send an approved render to Threads, then post it with a second click | You upload it yourself |
+| `PINTEREST_APP_ID` + `PINTEREST_APP_SECRET` + `PINTEREST_REFRESH_TOKEN` + `RB_VIDEO_PINTEREST_BOARD_ID` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Upload an approved render, then pin it to your board with a second click | You upload it yourself |
 
 Settings (`RB_VIDEO_*`): `NICHE`, `KEYWORDS` (JSON list), `REGION`, `SUBREDDITS` (JSON list),
 `GOOGLE_TRENDS_GEO`, `REDDIT_USER_AGENT`, `OUTPUT_DIR`, `TARGET_SECONDS`, `TEMPLATE`
@@ -63,7 +65,9 @@ Settings (`RB_VIDEO_*`): `NICHE`, `KEYWORDS` (JSON list), `REGION`, `SUBREDDITS`
 (`inbox` or `direct`), `TIKTOK_USERNAME`, `TIKTOK_TOKEN_FILE`, `INSTAGRAM_GRAPH_HOST`
 (`graph.facebook.com` or `graph.instagram.com`), `INSTAGRAM_API_VERSION` (default `v25.0`),
 `FACEBOOK_API_VERSION` (default `v25.0`), `LINKEDIN_VERSION` (default `202606`),
-`X_TOKEN_FILE`, `X_MAX_CHARS` (default 280), `PUBLIC_BASE_URL` (default: `RB_BASE_URL`).
+`X_TOKEN_FILE`, `X_MAX_CHARS` (default 280), `PUBLIC_BASE_URL` (default: `RB_BASE_URL`),
+`PINTEREST_BOARD_ID`, `PINTEREST_TOKEN_FILE`, `PINTEREST_API_HOST` (`api.pinterest.com` or
+`api-sandbox.pinterest.com`).
 
 ### How sources are compared
 
@@ -87,12 +91,12 @@ about something else (say, football scores) ranks below a smaller trend in your 
 - **Licensing.** Every asset records its provider, license and attribution. The generated
   upload description lists sources, credits and an AI-assistance note.
 - **Human in the loop.** Renders wait in review; approval only marks them ready for *you*
-  to upload. Optional direct upload to YouTube, TikTok, Instagram, Facebook, LinkedIn, X
-  and Threads exists, but it's off by default and every upload is a person pressing a
-  button (or confirming in the CLI): no job, sweep or pipeline step ever uploads or
-  publishes. YouTube uploads are private unless the person chooses otherwise, TikTok and
-  Facebook go to drafts by default, and Instagram, LinkedIn, X and Threads need a second
-  click to publish.
+  to upload. Optional direct upload to YouTube, TikTok, Instagram, Facebook, LinkedIn, X,
+  Threads and Pinterest exists, but it's off by default and every upload is a person
+  pressing a button (or confirming in the CLI): no job, sweep or pipeline step ever uploads
+  or publishes. YouTube uploads are private unless the person chooses otherwise, TikTok and
+  Facebook go to drafts by default, and Instagram, LinkedIn, X, Threads and Pinterest need a
+  second click to publish.
 
 ## Rendering
 
@@ -417,3 +421,40 @@ export THREADS_ACCESS_TOKEN=...
 export THREADS_USER_ID=...          # numeric; from GET https://graph.threads.net/v1.0/me
 export RB_VIDEO_PUBLIC_BASE_URL=https://your-site.example   # if RB_BASE_URL isn't public
 ```
+
+## Upload to Pinterest (optional)
+
+Two steps, each a person's click:
+
+1. **Upload video (not pinned yet)** registers and uploads the render with the title,
+   description, alt text and optional https link you entered
+   (`redblue video pinterest 12 -f 9:16 --link https://…`).
+2. When Pinterest has processed it, **Pin to Pinterest** with its confirmation creates the
+   Pin on `RB_VIDEO_PINTEREST_BOARD_ID` (`redblue video pinterest-publish UPLOAD_ID`). Who
+   sees it depends on the board: pin to a secret board first if you want to check it. The
+   Pin's link is recorded, so tracking starts.
+
+The cover is taken from the start of the video. Pinterest allows about 1,000 writes a day
+per user.
+
+**Setup.** At developers.pinterest.com, create an app and request the scopes `boards:read`,
+`pins:read` and `pins:write`. Authorize your account once with the OAuth flow and keep the
+refresh token; find the board id with `GET /v5/boards`. New apps start with limited ("trial")
+access; set `RB_VIDEO_PINTEREST_API_HOST=api-sandbox.pinterest.com` to test against
+Pinterest's sandbox until Standard access is granted.
+
+```bash
+export PINTEREST_APP_ID=... PINTEREST_APP_SECRET=... PINTEREST_REFRESH_TOKEN=...
+export RB_VIDEO_PINTEREST_BOARD_ID=1234567890
+export RB_VIDEO_PINTEREST_TOKEN_FILE=/var/lib/redblue/pinterest.token   # recommended
+```
+
+Pinterest refresh tokens last 60 days and are renewed as they're used; with the token file
+set, RedBlue keeps the latest one there (mode 600), so it doesn't expire while in use.
+
+## Snapchat
+
+Not wired up: Snapchat has no open posting API. Its Public Profile API is only for
+allowlisted partners, and the web "Share to Snapchat" button attaches a link to a new Snap
+rather than the video. Download the 9:16 render and post it to Stories or Spotlight in the
+Snapchat app, then record the Spotlight URL under **Published**.

@@ -17,6 +17,8 @@ the CLI), only approved projects, and the global ``RB_VIDEO_UPLOAD_ENABLED`` swi
 - **LinkedIn:** step 1 uploads the video (not visible); step 2 is a separate click that
   creates the post, with the visibility (anyone / connections) chosen then.
 - **X:** step 1 uploads the video (not posted); step 2 is a separate click that posts it.
+- **Pinterest:** step 1 uploads the video (not visible); step 2 is a separate click that
+  creates the Pin on the configured board.
 - **Threads:** step 1 lets Threads fetch the render from a signed link valid for one hour
   (it needs this site's public https address); step 2 is a separate click that posts it.
 
@@ -60,6 +62,7 @@ NAMES = {
     "linkedin": "LinkedIn",
     "x": "X",
     "threads": "Threads",
+    "pinterest": "Pinterest",
 }
 
 
@@ -81,6 +84,7 @@ PRIVACY_LABELS = {
     "SELF_ONLY": "Only me",
     "PUBLIC": "Anyone",
     "CONNECTIONS": "Connections",
+    "board": "On your board",
 }
 
 
@@ -92,6 +96,9 @@ def available(s: VideoSettings) -> dict[str, bool]:
         "linkedin": s.upload_enabled and s.linkedin_credentials is not None,
         "x": s.upload_enabled and s.x_credentials is not None,
         "threads": s.upload_enabled and s.threads_credentials is not None,
+        "pinterest": (
+            s.upload_enabled and s.pinterest_credentials is not None and bool(s.pinterest_board_id)
+        ),
     }
 
 
@@ -127,6 +134,7 @@ def defaults(p: VideoProject) -> dict:
         "linkedin_commentary": _caption_default(p, 3000),
         "x_text": _short_caption(p, 280),
         "threads_text": _short_caption(p, 500),
+        "pinterest_description": _caption_default(p, 800),
         "title": (script.title if script else p.topic)[:200],
     }
 
@@ -217,6 +225,28 @@ class XRequest(BaseModel):
     @classmethod
     def _format(cls, v: str) -> str:
         return get_format(v).key
+
+
+class PinterestRequest(BaseModel):
+    format: str = "9:16"
+    title: str = Field(default="", max_length=100)
+    description: str = Field(default="", max_length=800)
+    alt_text: str = Field(default="", max_length=500)
+    link: str = Field(default="", max_length=2048)
+
+    @field_validator("format")
+    @classmethod
+    def _format(cls, v: str) -> str:
+        return get_format(v).key
+
+    @field_validator("link")
+    @classmethod
+    def _link(cls, v: str) -> str:
+        v = v.strip()
+        parts = urlsplit(v)
+        if v and (parts.scheme != "https" or not parts.hostname or parts.username):
+            raise ValueError("The Pin link must be an https:// address.")
+        return v
 
 
 class ThreadsRequest(BaseModel):
@@ -540,6 +570,12 @@ def refresh(db: Session, up: Upload, s: VideoSettings, http: httpx.Client | None
             up.status = "ready"
         elif state == "failed":
             up.status, up.error = "failed", (error or "X couldn't process the video")[:500]
+    elif up.platform == "pinterest":
+        state = pinterest_client(s, http).media_status(up.external_ref)
+        if state == "succeeded":
+            up.status = "ready"
+        elif state == "failed":
+            up.status, up.error = "failed", "Pinterest couldn't process the video"
     elif up.platform == "threads" and up.external_ref:
         data = threads_client(s, http).status(up.external_ref)
         code = data.get("status", "")
@@ -672,8 +708,10 @@ def publish(
             confirmed=confirmed,
             http=http,
         )
-    if up.platform in ("x", "threads"):
-        fn = publish_x if up.platform == "x" else publish_threads
+    if up.platform in ("x", "threads", "pinterest"):
+        fn = {"x": publish_x, "threads": publish_threads, "pinterest": publish_pinterest}[
+            up.platform
+        ]
         return fn(db, up, s, confirmed_by=confirmed_by, confirmed=confirmed, http=http)
     raise ValueError(f"{name(up.platform)} uploads aren't published from here.")
 
@@ -879,4 +917,96 @@ def publish_threads(
     if link:
         _record(db, up, link)
     log.info("threads post %s by %s", media_id, confirmed_by)
+    return up
+
+
+# ---------------------------------------------------------------------- Pinterest
+
+
+def pinterest_client(s: VideoSettings, http: httpx.Client | None = None) -> clients.Pinterest:
+    path = Path(s.pinterest_token_file) if s.pinterest_token_file else None
+
+    def keep(new: str) -> None:
+        if path:
+            _write_token(path, new)
+        else:
+            log.warning(
+                "Pinterest issued a new refresh token; set RB_VIDEO_PINTEREST_TOKEN_FILE to keep "
+                "it, or re-authorize before the current one expires."
+            )
+
+    return clients.Pinterest(
+        s.pinterest_credentials, s.pinterest_board_id, s.pinterest_api_host, http, on_rotate=keep
+    )
+
+
+def upload_pinterest(
+    db: Session,
+    p: VideoProject,
+    req: PinterestRequest,
+    s: VideoSettings,
+    *,
+    confirmed_by: str,
+    confirmed: bool,
+    http: httpx.Client | None = None,
+) -> Upload:
+    """Step 1: upload the video to Pinterest (not visible). :func:`publish_pinterest` pins it."""
+    path = _guard(db, p, s, "pinterest", req.format, confirmed_by, confirmed)
+    media_id = pinterest_client(s, http).upload(path)
+    up = Upload(
+        project_id=p.id,
+        platform="pinterest",
+        format=req.format,
+        mode="pin",
+        status="processing",
+        external_ref=media_id,
+        uploaded_by=confirmed_by[:200],
+        meta={
+            "title": req.title or p.topic[:100],
+            "description": req.description,
+            "alt_text": req.alt_text,
+            "link": req.link,
+        },
+    )
+    db.add(up)
+    db.flush()
+    log.info("pinterest media %s for project %s by %s", media_id, p.id, confirmed_by)
+    return up
+
+
+def publish_pinterest(
+    db: Session,
+    up: Upload,
+    s: VideoSettings,
+    *,
+    confirmed_by: str,
+    confirmed: bool,
+    http: httpx.Client | None = None,
+) -> Upload:
+    """Step 2: a person creates the Pin. The only function that creates Pins."""
+    if up.platform != "pinterest":
+        raise ValueError("Only Pinterest uploads are published this way.")
+    if not available(s)["pinterest"]:
+        raise UploadDisabled("Pinterest upload is off.")
+    if not confirmed or not confirmed_by.strip():
+        raise ValueError("Confirm that this should be pinned on Pinterest now.")
+    refresh(db, up, s, http)
+    if up.status != "ready":
+        raise ValueError(
+            {
+                "processing": "Pinterest is still processing the video; try again shortly.",
+                "published": "This video is already pinned.",
+            }.get(up.status, f"Can't pin: {up.error or up.status}.")
+        )
+    pin_id = pinterest_client(s, http).create_pin(
+        media_id=up.external_ref,
+        title=up.meta.get("title", ""),
+        description=up.meta.get("description", ""),
+        link=up.meta.get("link", ""),
+        alt_text=up.meta.get("alt_text", ""),
+    )
+    up.status, up.published_by, up.privacy = "published", confirmed_by[:200], "board"
+    up.meta = {**up.meta, "pin": pin_id}
+    _record(db, up, f"https://www.pinterest.com/pin/{pin_id}")
+    log.info("pinterest pin %s by %s", pin_id, confirmed_by)
     return up
