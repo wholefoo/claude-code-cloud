@@ -262,6 +262,217 @@ class YouTubeUploader:
         return body
 
 
+class PlatformError(RuntimeError):
+    """A posting API answered with an error (message is safe to show to the person)."""
+
+
+def _https_host(url: str, suffixes: tuple[str, ...]) -> str:
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower()
+    if parts.scheme != "https" or not any(host == d or host.endswith("." + d) for d in suffixes):
+        raise ValueError("The platform returned an unexpected upload URL.")
+    return url
+
+
+class TikTok:
+    """TikTok Content Posting API. ``inbox`` uploads land in the creator's TikTok drafts
+    (scope ``video.upload``); ``direct`` posts (scope ``video.publish``). Only called from
+    :mod:`redblue.video.upload_social`, which requires a person's confirmation."""
+
+    TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/"  # noqa: S105  # nosec B105
+    API = "https://open.tiktokapis.com/v2/post/publish"
+    MIN_CHUNK, MAX_SINGLE, CHUNK = 5 * 2**20, 64 * 2**20, 10 * 2**20
+
+    def __init__(
+        self,
+        credentials: tuple[str, str, str] | None,
+        client: httpx.Client | None = None,
+        on_rotate=None,
+    ):
+        if not credentials:
+            raise MissingKey(
+                "Set TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET and TIKTOK_REFRESH_TOKEN to upload "
+                "to TikTok."
+            )
+        self.credentials, self.http, self.on_rotate = credentials, _client(client), on_rotate
+        self._token: str | None = None
+
+    def _auth(self) -> dict:
+        if self._token is None:
+            key, secret, refresh = self.credentials
+            r = self.http.post(
+                self.TOKEN_URL,
+                data={
+                    "client_key": key,
+                    "client_secret": secret,
+                    "grant_type": "refresh_token",
+                    "refresh_token": refresh,
+                },
+            )
+            r.raise_for_status()
+            body = r.json()
+            if "access_token" not in body:
+                raise PlatformError(f"TikTok login failed: {body.get('error', 'no token')}")
+            self._token = body["access_token"]
+            new = body.get("refresh_token")
+            if new and new != refresh and self.on_rotate:
+                self.on_rotate(new)
+        return {"Authorization": f"Bearer {self._token}"}
+
+    def _post(self, path: str, payload: dict) -> dict:
+        r = self.http.post(
+            f"{self.API}/{path}",
+            headers={**self._auth(), "Content-Type": "application/json; charset=UTF-8"},
+            json=payload,
+        )
+        body = r.json() if r.content else {}
+        err = body.get("error") or {}
+        if r.status_code >= 400 or err.get("code") not in (None, "ok"):
+            raise PlatformError(f"TikTok: {err.get('message') or err.get('code') or r.status_code}")
+        return body.get("data") or {}
+
+    def creator_info(self) -> dict:
+        return self._post("creator_info/query/", {})
+
+    @classmethod
+    def chunks(cls, size: int) -> tuple[int, int]:
+        """(chunk_size, total_chunk_count) per TikTok's rules: one chunk up to 64 MB, else
+        10 MB chunks with the remainder folded into the last one."""
+        if size <= cls.MAX_SINGLE:
+            return size, 1
+        return cls.CHUNK, size // cls.CHUNK
+
+    def upload(self, path, post_info: dict | None = None) -> str:
+        """Init (inbox when ``post_info`` is None, else direct post) and send the file.
+        Returns the publish_id."""
+        size = path.stat().st_size
+        chunk, count = self.chunks(size)
+        source = {
+            "source": "FILE_UPLOAD",
+            "video_size": size,
+            "chunk_size": chunk,
+            "total_chunk_count": count,
+        }
+        if post_info is None:
+            data = self._post("inbox/video/init/", {"source_info": source})
+        else:
+            data = self._post("video/init/", {"post_info": post_info, "source_info": source})
+        publish_id, url = data.get("publish_id"), data.get("upload_url", "")
+        if not publish_id:
+            raise PlatformError("TikTok didn't return a publish id.")
+        _https_host(url, ("tiktokapis.com",))
+        with path.open("rb") as f:
+            for i in range(count):
+                start = i * chunk
+                end = size - 1 if i == count - 1 else start + chunk - 1
+                f.seek(start)
+                r = self.http.put(
+                    url,
+                    headers={
+                        "Content-Type": "video/mp4",
+                        "Content-Range": f"bytes {start}-{end}/{size}",
+                    },
+                    content=f.read(end - start + 1),
+                    timeout=httpx.Timeout(600.0, connect=10.0),
+                )
+                r.raise_for_status()
+        return publish_id
+
+    def status(self, publish_id: str) -> dict:
+        return self._post("status/fetch/", {"publish_id": publish_id})
+
+
+class Instagram:
+    """Instagram Graph API Reels publishing: a resumable-upload container first (not
+    public), then ``media_publish`` (public), which only a person's click triggers."""
+
+    RUPLOAD = "https://rupload.facebook.com/ig-api-upload"
+
+    def __init__(
+        self,
+        credentials: tuple[str, str] | None,
+        host: str = "graph.facebook.com",
+        version: str = "v25.0",
+        client: httpx.Client | None = None,
+    ):
+        if not credentials:
+            raise MissingKey("Set INSTAGRAM_ACCESS_TOKEN and INSTAGRAM_USER_ID to post Reels.")
+        if host not in ("graph.facebook.com", "graph.instagram.com"):
+            raise ValueError("Unsupported Instagram API host.")
+        if not re.fullmatch(r"v\d{1,3}\.\d", version):
+            raise ValueError("Instagram API version looks like v25.0.")
+        self.token, self.user_id = credentials
+        if not re.fullmatch(r"\d{1,30}", self.user_id):
+            raise ValueError("INSTAGRAM_USER_ID must be the numeric account id.")
+        self.base, self.version, self.http = f"https://{host}/{version}", version, _client(client)
+
+    @property
+    def _auth(self) -> dict:
+        return {"Authorization": f"Bearer {self.token}"}
+
+    def _json(self, r: httpx.Response) -> dict:
+        body = r.json() if r.content else {}
+        if r.status_code >= 400 or "error" in body:
+            err = body.get("error") or {}
+            raise PlatformError(f"Instagram: {err.get('message') or r.status_code}")
+        return body
+
+    def create_reel(self, caption: str, share_to_feed: bool = True) -> str:
+        r = self.http.post(
+            f"{self.base}/{self.user_id}/media",
+            headers=self._auth,
+            data={
+                "media_type": "REELS",
+                "upload_type": "resumable",
+                "caption": caption,
+                "share_to_feed": "true" if share_to_feed else "false",
+            },
+        )
+        cid = str(self._json(r).get("id", ""))
+        if not re.fullmatch(r"\d{1,40}", cid):
+            raise PlatformError("Instagram didn't return a container id.")
+        return cid
+
+    def send_file(self, container_id: str, path) -> None:
+        data = path.read_bytes()
+        r = self.http.post(
+            f"{self.RUPLOAD}/{self.version}/{container_id}",
+            headers={
+                "Authorization": f"OAuth {self.token}",
+                "offset": "0",
+                "file_size": str(len(data)),
+            },
+            content=data,
+            timeout=httpx.Timeout(600.0, connect=10.0),
+        )
+        self._json(r)
+
+    def status(self, container_id: str) -> dict:
+        r = self.http.get(
+            f"{self.base}/{container_id}",
+            headers=self._auth,
+            params={"fields": "status_code,status"},
+        )
+        return self._json(r)
+
+    def publish(self, container_id: str) -> str:
+        r = self.http.post(
+            f"{self.base}/{self.user_id}/media_publish",
+            headers=self._auth,
+            data={"creation_id": container_id},
+        )
+        mid = str(self._json(r).get("id", ""))
+        if not mid:
+            raise PlatformError("Instagram didn't return a media id.")
+        return mid
+
+    def permalink(self, media_id: str) -> str | None:
+        r = self.http.get(
+            f"{self.base}/{media_id}", headers=self._auth, params={"fields": "permalink"}
+        )
+        return self._json(r).get("permalink")
+
+
 def _int(value) -> int | None:
     try:
         return int(value) if value is not None and value != "" else None

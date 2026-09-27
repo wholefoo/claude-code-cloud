@@ -18,8 +18,9 @@ from redblue.core.auth import Role
 from redblue.templates.env import make_templates
 from redblue.video import performance
 from redblue.video import upload as uploads
+from redblue.video import upload_social as social
 from redblue.video.config import get_video_settings
-from redblue.video.models import MetricSnapshot, Publication, Trend, VideoProject
+from redblue.video.models import MetricSnapshot, Publication, Trend, Upload, VideoProject
 from redblue.video.pipeline import Pipeline, description
 from redblue.video.schemas import Script
 from redblue.video.templates import FORMATS, TEMPLATES, get_format
@@ -145,7 +146,32 @@ def project(pid: int, request: Request, db: DB, user: Writer) -> HTMLResponse:
         uploaded={
             r["key"] for r in renders if uploads.already_uploaded(db, p, r["key"]) is not None
         },
+        social=social.available(vs),
+        social_defaults=social.defaults(p) if p.status == "approved" else {},
+        tiktok_mode=vs.tiktok_mode,
+        tiktok_opts=_tiktok_options(vs) if _wants_tiktok_options(p, vs, user) else None,
+        privacy_labels=social.PRIVACY_LABELS,
+        social_uploads=list(
+            db.scalars(select(Upload).where(Upload.project_id == pid).order_by(Upload.id))
+        ),
     )
+
+
+def _wants_tiktok_options(p: VideoProject, vs, user) -> bool:
+    return (
+        p.status == "approved"
+        and vs.tiktok_mode == "direct"
+        and social.available(vs)["tiktok"]
+        and user.has_role(Role.editor)
+    )
+
+
+def _tiktok_options(vs) -> dict:
+    """TikTok requires showing the account's own options before a direct post."""
+    try:
+        return social.tiktok_options(vs)
+    except (social.clients.PlatformError, social.clients.MissingKey, httpx.HTTPError) as exc:
+        return {"error": str(exc)[:200]}
 
 
 def _publications(db, pid: int) -> list[dict]:
@@ -266,6 +292,133 @@ def upload_video(
     except (ValueError, uploads.UploadDisabled, httpx.HTTPError) as exc:
         return back(dest, f"Upload failed: {exc}"[:300])
     return back(dest, f"Uploaded to YouTube as {pub.privacy}: {pub.url}")
+
+
+def _flag(value: str) -> bool:
+    return value in ("1", "on", "true", "yes")
+
+
+@router.post("/projects/{pid:int}/tiktok")
+def upload_tiktok(
+    pid: int,
+    db: DB,
+    user: Writer,
+    format: Annotated[str, Form()] = "9:16",
+    caption: Annotated[str, Form()] = "",
+    privacy: Annotated[str, Form()] = "",
+    allow_comments: Annotated[str, Form()] = "",
+    allow_duet: Annotated[str, Form()] = "",
+    allow_stitch: Annotated[str, Form()] = "",
+    is_aigc: Annotated[str, Form()] = "",
+    brand_organic: Annotated[str, Form()] = "",
+    brand_content: Annotated[str, Form()] = "",
+    confirm: Annotated[str, Form()] = "",
+    confirm_public: Annotated[str, Form()] = "",
+):
+    need(user, Role.editor)
+    p = _project(db, pid)
+    dest = f"/admin/video/projects/{pid}"
+    vs = get_video_settings()
+    try:
+        req = social.TikTokRequest(
+            format=format,
+            caption=caption,
+            privacy=privacy or None,
+            allow_comments=_flag(allow_comments),
+            allow_duet=_flag(allow_duet),
+            allow_stitch=_flag(allow_stitch),
+            is_aigc=_flag(is_aigc),
+            brand_organic=_flag(brand_organic),
+            brand_content=_flag(brand_content),
+        )
+        up = social.upload_tiktok(
+            db,
+            p,
+            req,
+            vs,
+            confirmed_by=user.email,
+            confirmed=_flag(confirm),
+            confirmed_public=_flag(confirm_public),
+        )
+    except ValidationError as exc:
+        return back(dest, f"Check the TikTok form: {exc.errors()[0]['msg']}"[:300])
+    except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
+        return back(dest, f"TikTok upload failed: {exc}"[:300])
+    except httpx.HTTPError as exc:
+        return back(dest, f"TikTok upload failed: {exc}"[:300])
+    msg = (
+        "Sent to TikTok. Open the TikTok app (inbox notification) to finish and post it."
+        if up.mode == "inbox"
+        else "Sent to TikTok; it's processing. Check status in a minute."
+    )
+    return back(dest, msg)
+
+
+@router.post("/projects/{pid:int}/instagram")
+def upload_instagram(
+    pid: int,
+    db: DB,
+    user: Writer,
+    format: Annotated[str, Form()] = "9:16",
+    caption: Annotated[str, Form()] = "",
+    share_to_feed: Annotated[str, Form()] = "",
+    confirm: Annotated[str, Form()] = "",
+):
+    need(user, Role.editor)
+    p = _project(db, pid)
+    dest = f"/admin/video/projects/{pid}"
+    try:
+        req = social.InstagramRequest(
+            format=format, caption=caption, share_to_feed=_flag(share_to_feed)
+        )
+        social.upload_instagram(
+            db, p, req, get_video_settings(), confirmed_by=user.email, confirmed=_flag(confirm)
+        )
+    except ValidationError as exc:
+        return back(dest, f"Check the Instagram form: {exc.errors()[0]['msg']}"[:300])
+    except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
+        return back(dest, f"Instagram upload failed: {exc}"[:300])
+    except httpx.HTTPError as exc:
+        return back(dest, f"Instagram upload failed: {exc}"[:300])
+    return back(
+        dest,
+        "Uploaded to Instagram (not public yet). When it's processed, press Publish below.",
+    )
+
+
+def _upload(db, uid: int) -> Upload:
+    up = db.get(Upload, uid)
+    if up is None:
+        raise HTTPException(404)
+    return up
+
+
+@router.post("/uploads/{uid:int}/refresh")
+def refresh_upload(uid: int, db: DB, user: Writer):
+    up = _upload(db, uid)
+    dest = f"/admin/video/projects/{up.project_id}"
+    try:
+        social.refresh(db, up, get_video_settings())
+    except (social.clients.MissingKey, social.clients.PlatformError, httpx.HTTPError) as exc:
+        return back(dest, f"Status check failed: {exc}"[:300])
+    return back(dest, f"{up.platform.title()} upload: {up.status.replace('_', ' ')}.")
+
+
+@router.post("/uploads/{uid:int}/publish")
+def publish_upload(uid: int, db: DB, user: Writer, confirm: Annotated[str, Form()] = ""):
+    """Instagram step 2: a person makes the Reel public."""
+    need(user, Role.editor)
+    up = _upload(db, uid)
+    dest = f"/admin/video/projects/{up.project_id}"
+    try:
+        social.publish_instagram(
+            db, up, get_video_settings(), confirmed_by=user.email, confirmed=_flag(confirm)
+        )
+    except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
+        return back(dest, f"Publish failed: {exc}"[:300])
+    except httpx.HTTPError as exc:
+        return back(dest, f"Publish failed: {exc}"[:300])
+    return back(dest, f"Published on Instagram{': ' + up.url if up.url else ''}.")
 
 
 @router.post("/publications/{pub_id:int}/metrics")

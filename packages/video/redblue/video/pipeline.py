@@ -286,8 +286,13 @@ class Pipeline:
     # ------------------------------------------------------------------ 7. performance
 
     def track(self, db: Session) -> performance.TrackResult:
-        """Snapshot stats for published videos (read-only; nothing is ever posted)."""
-        return performance.track(db, self.s, self.http)
+        """Snapshot stats for published videos and check pending TikTok/Instagram uploads.
+        Read-only: nothing is ever posted or published from here."""
+        from redblue.video.upload_social import refresh_pending  # avoids an import cycle
+
+        res = performance.track(db, self.s, self.http)
+        res.notes += refresh_pending(db, self.s, self.http)
+        return res
 
     def run(self, db: Session, p: VideoProject) -> VideoProject:
         """Brief → script → render in one go (stops at script problems for a human)."""

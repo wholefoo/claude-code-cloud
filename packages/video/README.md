@@ -13,8 +13,8 @@ Google     opportunity ◄──────────────── track
 Trends
 ```
 
-"You upload" means by hand, or with the optional **Upload to YouTube** button, which a
-person presses for each video.
+"You upload" means by hand, or with the optional upload buttons for YouTube, TikTok and
+Instagram, which a person presses for each video.
 
 ## Quickstart
 
@@ -46,6 +46,8 @@ That's useful for testing, and you add keys as you go.
 | `ANTHROPIC_API_KEY` | Brief and script writing (structured, cited) | Deterministic templates |
 | `YOUTUBE_OAUTH_CLIENT_ID` + `YOUTUBE_OAUTH_CLIENT_SECRET` + `YOUTUBE_OAUTH_REFRESH_TOKEN` | Retention and shares for your uploads (YouTube Analytics, read-only) | Public view/like/comment counts only |
 | `YOUTUBE_UPLOAD_REFRESH_TOKEN` + `RB_VIDEO_UPLOAD_ENABLED=true` (same OAuth client) | Optional one-click upload of an approved render to YouTube | You upload the downloaded file yourself |
+| `TIKTOK_CLIENT_KEY` + `TIKTOK_CLIENT_SECRET` + `TIKTOK_REFRESH_TOKEN` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Send an approved render to your TikTok drafts (or post it directly) | You upload it yourself |
+| `INSTAGRAM_ACCESS_TOKEN` + `INSTAGRAM_USER_ID` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Upload an approved render as a Reel, then publish it with a second click | You upload it yourself |
 
 Settings (`RB_VIDEO_*`): `NICHE`, `KEYWORDS` (JSON list), `REGION`, `SUBREDDITS` (JSON list),
 `GOOGLE_TRENDS_GEO`, `REDDIT_USER_AGENT`, `OUTPUT_DIR`, `TARGET_SECONDS`, `TEMPLATE`
@@ -53,7 +55,9 @@ Settings (`RB_VIDEO_*`): `NICHE`, `KEYWORDS` (JSON list), `REGION`, `SUBREDDITS`
 (`whisper` or `even`), `WHISPER_MODEL`, `PERF_WINDOW_HOURS` (default 72), `TRACK_DAYS`
 (default 30), `LEARN_FROM_PERFORMANCE` (default true), `LEARN_MIN_VIDEOS` (default 5),
 `SCORE_WEIGHTS` (JSON object, e.g. `{"velocity": 0.2, "relevance": 0.45}`), `UPLOAD_ENABLED`
-(default false), `UPLOAD_CATEGORY_ID` (default 28, Science & Technology).
+(default false), `UPLOAD_CATEGORY_ID` (default 28, Science & Technology), `TIKTOK_MODE`
+(`inbox` or `direct`), `TIKTOK_USERNAME`, `TIKTOK_TOKEN_FILE`, `INSTAGRAM_GRAPH_HOST`
+(`graph.facebook.com` or `graph.instagram.com`), `INSTAGRAM_API_VERSION` (default `v25.0`).
 
 ### How sources are compared
 
@@ -77,9 +81,11 @@ about something else (say, football scores) ranks below a smaller trend in your 
 - **Licensing.** Every asset records its provider, license and attribution. The generated
   upload description lists sources, credits and an AI-assistance note.
 - **Human in the loop.** Renders wait in review; approval only marks them ready for *you*
-  to upload. Optional direct upload to YouTube exists, but it's off by default and every
-  upload is a person pressing a button (or confirming in the CLI): no job, sweep or pipeline
-  step ever uploads, and uploads are private unless the person chooses otherwise.
+  to upload. Optional direct upload to YouTube, TikTok and Instagram exists, but it's off
+  by default and every upload is a person pressing a button (or confirming in the CLI): no
+  job, sweep or pipeline step ever uploads or publishes. YouTube uploads are private unless
+  the person chooses otherwise, TikTok goes to your drafts by default, and Instagram needs
+  a second click to publish.
 
 ## Rendering
 
@@ -181,7 +187,7 @@ data lags two to three days, so public counts are used for views when they're hi
 
 Only your own published videos are read. Nothing is posted, liked or commented.
 
-## Direct upload to YouTube (optional)
+## Upload to YouTube (optional)
 
 Off by default. When it's on, an editor sees an **Upload to YouTube** panel on approved
 projects: pick the render (format), check the pre-filled title, description (sources,
@@ -215,6 +221,86 @@ unlisted uploads from unaudited API projects), so pass Google's API audit before
 public uploads; until then, upload privately and publish from YouTube Studio. Each upload
 uses a large share of the default daily API quota, so check your quota in Google Cloud.
 
-TikTok and Instagram uploads aren't included: their posting APIs need an app review and,
-for Instagram, a publicly hosted copy of the video. Download the render and upload those
-yourself, then record the URL.
+## Upload to TikTok (optional)
+
+Off by default. With credentials set, editors see an **Upload to TikTok** panel on approved
+projects, and there's a CLI command: `redblue video tiktok 12 -f 9:16`.
+
+- **Drafts mode (default, `RB_VIDEO_TIKTOK_MODE=inbox`, scope `video.upload`).** The
+  video goes to your TikTok inbox as a draft. Open the notification in the TikTok app to add
+  the caption, sound and privacy and post it. Then record the post's URL under
+  **Published** (or set `RB_VIDEO_TIKTOK_USERNAME` so public posts are linked for you).
+- **Direct mode (`RB_VIDEO_TIKTOK_MODE=direct`, scope `video.publish`).** Posts from
+  RedBlue. As TikTok requires, the panel shows the account name and the privacy options
+  TikTok allows for the account, with none preselected. Comments, Duet and Stitch start off.
+  There are commercial-content disclosures and an "AI-generated" label (on by default).
+  Choosing anything other than "Only me" needs a second confirmation. **Until TikTok audits
+  your app, direct posts are private ("Only me") and limited to a few accounts.**
+
+Status updates arrive via **Check status**, `redblue video uploads`, or the 6-hourly
+tracking job, which only reads status.
+
+**Setup.**
+
+1. At developers.tiktok.com, create an app and add **Login Kit** and the **Content Posting
+   API** (enable Direct Post only if you want direct mode). Request `user.info.basic` and
+   `video.upload` (drafts) or `video.publish` (direct), and register a redirect URI you
+   control.
+2. Authorize your account once. Open
+   `https://www.tiktok.com/v2/auth/authorize/?client_key=KEY&response_type=code&scope=user.info.basic,video.upload&redirect_uri=URI&state=anything`,
+   approve, and copy the `code` from the address you're redirected to.
+3. Exchange the code for tokens:
+
+   ```bash
+   curl -s https://open.tiktokapis.com/v2/oauth/token/ \
+     -d client_key=KEY -d client_secret=SECRET -d grant_type=authorization_code \
+     --data-urlencode redirect_uri=URI -d "code=CODE_AS_COPIED"
+   ```
+
+   Paste the code exactly as it appears in the address bar: it's already URL-encoded.
+   Codes expire within minutes. Keep the `refresh_token` it returns (valid for a year).
+   If your TikTok app is still in sandbox, add your account as a target user first.
+4. Set the credentials:
+
+   ```bash
+   export TIKTOK_CLIENT_KEY=... TIKTOK_CLIENT_SECRET=... TIKTOK_REFRESH_TOKEN=...
+   export RB_VIDEO_TIKTOK_TOKEN_FILE=/var/lib/redblue/tiktok.token   # optional, see below
+   ```
+
+TikTok may issue a new refresh token when RedBlue refreshes access. With
+`RB_VIDEO_TIKTOK_TOKEN_FILE` set, the new one is written there (mode 600) and used from then
+on. Otherwise RedBlue logs a warning and you re-authorize before the old one expires.
+
+## Upload to Instagram (optional)
+
+Off by default. Instagram has no private or draft posts, so it takes two steps, each a
+person's click:
+
+1. **Upload Reel (not public yet)** sends the render into an Instagram container
+   (`redblue video instagram 12 -f 9:16`).
+2. When Instagram has processed it (**Check status** shows "ready"), **Publish to
+   Instagram** with its confirmation makes it public
+   (`redblue video instagram-publish UPLOAD_ID`). The permalink is recorded, so tracking
+   starts.
+
+The tracking job refreshes the status of pending uploads but never publishes. Unpublished
+containers expire after 24 hours; upload again if that happens. Instagram allows 100
+API-published posts per account per day. The caption is pre-filled with the title, the AI
+note and hashtags (at most 30).
+
+**Setup.** You need an Instagram professional account (Business or Creator) and a Meta
+developer app with the Instagram product.
+
+- **Instagram Login** (simplest): add the `instagram_business_basic` and
+  `instagram_business_content_publish` permissions, generate a token for your account in the
+  app dashboard, and set `RB_VIDEO_INSTAGRAM_GRAPH_HOST=graph.instagram.com`.
+- **Facebook Login** (account linked to a Facebook Page): `instagram_content_publish` with
+  the default host `graph.facebook.com`.
+
+```bash
+export INSTAGRAM_ACCESS_TOKEN=...      # long-lived token; expires after 60 days
+export INSTAGRAM_USER_ID=1784...       # the numeric Instagram account id
+```
+
+Long-lived Instagram tokens last 60 days; refresh or regenerate them before then. Until
+Meta approves your app, only accounts with a role on the app can use it.
