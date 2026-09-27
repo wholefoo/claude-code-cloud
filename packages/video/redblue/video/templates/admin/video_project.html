@@ -22,15 +22,32 @@
     <button class="rb-btn">Save script</button></form>
   {% else %}<p class="rb-muted">No script yet.</p>{% endif %}
   </section>
-  {% if project.render_path %}
+  {% if renders %}
   <section class="rb-card"><h2>3. Preview</h2>
-    <video controls preload="metadata" width="360" src="/admin/video/projects/{{ project.id }}/video.mp4"></video>
-    <p><a class="rb-btn" href="/admin/video/projects/{{ project.id }}/video.mp4" download>Download MP4</a></p>
+    <div class="rb-renders">
+    {% for r in renders %}
+      <figure>
+        <video controls preload="metadata" width="{{ 300 if r.height >= r.width else 480 }}" src="/admin/video/projects/{{ project.id }}/video.mp4?format={{ r.slug }}"></video>
+        <figcaption><strong>{{ r.key }}</strong> {{ r.width }}×{{ r.height }}: {{ r.label }}<br>
+        <a class="rb-btn" href="/admin/video/projects/{{ project.id }}/video.mp4?format={{ r.slug }}" download>Download {{ r.key }}</a></figcaption>
+      </figure>
+    {% endfor %}
+    </div>
     <label>Upload description (sources and credits) <textarea rows="8" readonly>{{ upload_text }}</textarea></label>
   </section>
   {% endif %}
 </div>
 <aside class="rb-editor__side">
+  <section class="rb-card"><h2>Look</h2>
+    <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/look"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Template <select name="template">{% for t in templates_list %}<option value="{{ t.key }}"{% if t.key == current_template %} selected{% endif %}>{{ t.name }}</option>{% endfor %}</select></label>
+      <p class="rb-muted">{% for t in templates_list %}{% if t.key == current_template %}{{ t.description }}{% endif %}{% endfor %}</p>
+      <fieldset><legend>Formats</legend>
+      {% for f in formats_list %}<label class="rb-check"><input type="checkbox" name="formats" value="{{ f.key }}"{% if f.key in current_formats %} checked{% endif %}> {{ f.key }} <span class="rb-muted">{{ f.label }}</span></label>{% endfor %}
+      </fieldset>
+      <button class="rb-btn">Save look</button>
+    </form>
+  </section>
   <section class="rb-card"><h2>Pipeline</h2>
     {% for action, label in [("research", "Research brief"), ("script", "Write script"), ("render", "Render video")] %}
     <form method="post" action="/admin/video/projects/{{ project.id }}/step"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rb-btn{% if (action == 'research' and not project.brief) or (action == 'script' and project.brief and not project.script) or (action == 'render' and project.script and not project.render_path) %} rb-btn--primary{% endif %}" name="action" value="{{ action }}">{{ label }}</button></form>

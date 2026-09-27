@@ -23,6 +23,7 @@ from redblue.video.models import Trend, VideoProject
 from redblue.video.render import BeatMedia, media_duration, render
 from redblue.video.schemas import Asset, Brief, Script, Source, TrendSignal
 from redblue.video.scoring import score_all
+from redblue.video.templates import Format, Template, get_format, get_template
 from redblue.video.writing import make_brief, make_script
 
 log = logging.getLogger("redblue.video")
@@ -161,19 +162,38 @@ class Pipeline:
         script = Script.model_validate(p.script)
         if p.problems:
             raise ValueError("Fix the script problems before rendering: " + "; ".join(p.problems))
+        tpl, fmts = self.look(p)
         workdir = (self.s.output_dir / f"project-{p.id}").resolve()
         workdir.mkdir(parents=True, exist_ok=True)
-        media, assets = self._assets(script, workdir)
+        media, assets = self._assets(script, workdir, fmts[0].orientation)
         self._time_words(script, media)
         p.status = "rendering"
-        out = render(
-            script, media, workdir / f"video-{p.id}.mp4", width=self.s.width, height=self.s.height
-        )
+        renders: dict[str, str] = {}
+        for fmt in fmts:  # same script, footage and narration; each format framed separately
+            out = render(
+                script, media, workdir / f"video-{p.id}-{fmt.slug}.mp4", fmt=fmt, template=tpl
+            )
+            renders[fmt.key] = str(out)
         p.assets = [a.model_dump(mode="json") for a in assets]
-        p.render_path, p.status = str(out), "review"
-        return out
+        p.renders = renders
+        p.render_path, p.status = renders[fmts[0].key], "review"
+        return Path(p.render_path)
 
-    def _assets(self, script: Script, workdir: Path) -> tuple[list[BeatMedia], list[Asset]]:
+    def look(self, p: VideoProject) -> tuple[Template, list[Format]]:
+        """The project's template and formats, falling back to the site settings."""
+        tpl = get_template(p.template or self.s.template)
+        keys = p.formats or self.s.formats or ["9:16"]
+        fmts = list(dict.fromkeys(get_format(k) for k in keys))
+        return tpl, fmts
+
+    def set_look(self, p: VideoProject, template: str, formats: list[str]) -> None:
+        tpl = get_template(template)
+        fmts = [get_format(f).key for f in formats] or ["9:16"]
+        p.template, p.formats = tpl.key, list(dict.fromkeys(fmts))
+
+    def _assets(
+        self, script: Script, workdir: Path, orientation: str = "portrait"
+    ) -> tuple[list[BeatMedia], list[Asset]]:
         media, assets = [], []
         try:
             pexels = clients.Pexels(self.s.key("pexels"), self.http)
@@ -187,7 +207,7 @@ class Pipeline:
             m = BeatMedia()
             if pexels:
                 try:
-                    hit = pexels.find(beat.visual_query)
+                    hit = pexels.find(beat.visual_query, orientation)
                     if hit:
                         dest = workdir / f"clip-{i:02d}.mp4"
                         pexels.download(hit["url"], dest)

@@ -19,6 +19,7 @@ from redblue.video.config import get_video_settings
 from redblue.video.models import Trend, VideoProject
 from redblue.video.pipeline import Pipeline, description
 from redblue.video.schemas import Script
+from redblue.video.templates import FORMATS, TEMPLATES, get_format
 
 templates = make_templates([Path(__file__).parent / "templates", ADMIN_DIR / "templates"])
 router = APIRouter(prefix="/admin/video", include_in_schema=False)
@@ -110,6 +111,17 @@ def create(
 @router.get("/projects/{pid:int}")
 def project(pid: int, request: Request, db: DB, user: Writer) -> HTMLResponse:
     p = _project(db, pid)
+    tpl, fmts = _pipeline(request).look(p)
+    renders = [
+        {
+            "key": k,
+            "slug": get_format(k).slug,
+            "label": get_format(k).label,
+            "width": get_format(k).width,
+            "height": get_format(k).height,
+        }
+        for k in (p.renders or ({"9:16": p.render_path} if p.render_path else {}))
+    ]
     return _render(
         request,
         "video_project.html",
@@ -117,7 +129,29 @@ def project(pid: int, request: Request, db: DB, user: Writer) -> HTMLResponse:
         project=p,
         script_json=json.dumps(p.script, indent=2) if p.script else "",
         upload_text=description(p) if p.script else "",
+        templates_list=list(TEMPLATES.values()),
+        formats_list=list(FORMATS.values()),
+        current_template=tpl.key,
+        current_formats=[f.key for f in fmts],
+        renders=renders,
     )
+
+
+@router.post("/projects/{pid:int}/look")
+def set_look(
+    pid: int,
+    request: Request,
+    db: DB,
+    user: Writer,
+    template: Annotated[str, Form()],
+    formats: Annotated[list[str] | None, Form()] = None,
+):
+    p = _project(db, pid)
+    try:
+        _pipeline(request).set_look(p, template, formats or [])
+    except ValueError as exc:
+        return back(f"/admin/video/projects/{pid}", str(exc))
+    return back(f"/admin/video/projects/{pid}", "Look saved. Render to apply it.")
 
 
 @router.post("/projects/{pid:int}/step")
@@ -178,13 +212,22 @@ def review(
 
 
 @router.get("/projects/{pid:int}/video.mp4")
-def video_file(pid: int, db: DB, user: Writer):
+def video_file(pid: int, db: DB, user: Writer, format: str = ""):
     p = _project(db, pid)
+    if format:
+        try:
+            key = get_format(format).key
+        except ValueError:
+            raise HTTPException(404) from None
+        raw = (p.renders or {}).get(key)
+    else:
+        raw, key = p.render_path, None
     out_root = get_video_settings().output_dir.resolve()
-    path = Path(p.render_path or "").resolve()
-    if not p.render_path or out_root not in path.parents or not path.is_file():
+    path = Path(raw or "").resolve()
+    if not raw or out_root not in path.parents or not path.is_file():
         raise HTTPException(404)
-    return FileResponse(path, media_type="video/mp4", filename=f"video-{pid}.mp4")
+    suffix = f"-{get_format(key).slug}" if key else ""
+    return FileResponse(path, media_type="video/mp4", filename=f"video-{pid}{suffix}.mp4")
 
 
 def install_video(app: FastAPI) -> None:

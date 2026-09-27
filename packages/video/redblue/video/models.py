@@ -37,7 +37,10 @@ class VideoProject(Base, TimestampMixin):
     brief: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     script: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     assets: Mapped[list] = mapped_column(JSON, default=list)
-    render_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    render_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)  # first format
+    template: Mapped[str | None] = mapped_column(String(40), nullable=True)  # None: setting
+    formats: Mapped[list | None] = mapped_column(JSON, nullable=True)  # ["9:16", "16:9"]
+    renders: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # {"9:16": "/path.mp4"}
     problems: Mapped[list] = mapped_column(JSON, default=list)
     review_note: Mapped[str] = mapped_column(Text, default="")
     reviewed_by: Mapped[int | None] = mapped_column(Integer, nullable=True)

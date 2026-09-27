@@ -5,13 +5,17 @@ Only parameterized queries are used across the platform; there is no raw-SQL hel
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, Engine, create_engine, event
+from sqlalchemy import DateTime, Engine, create_engine, event, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
+
+_IDENT = re.compile(r"[a-z_][a-z0-9_]{0,62}")
+_DDL_TYPE = re.compile(r"[A-Z][A-Z0-9_ ]*(\(\d+(,\s*\d+)?\))?")
 
 
 def utcnow() -> datetime:
@@ -43,6 +47,41 @@ class Database:
         # Import model modules so they register with Base.metadata.
         _import_models()
         Base.metadata.create_all(self.engine)
+        self.add_missing_columns()
+
+    def add_missing_columns(self) -> list[str]:
+        """Additive upgrades: add new *nullable* columns to existing tables.
+
+        ``create_all`` never alters existing tables, so a release that adds a column would
+        break older databases. This covers the common additive case safely; renames, type
+        changes and NOT NULL columns still need a real migration (Alembic, on the roadmap).
+        Returns the ``table.column`` names it added.
+        """
+        insp = inspect(self.engine)
+        existing_tables = set(insp.get_table_names())
+        quote = self.engine.dialect.identifier_preparer.quote
+        added: list[str] = []
+        with self.engine.begin() as conn:
+            for table in Base.metadata.sorted_tables:
+                if table.name not in existing_tables:
+                    continue
+                present = {c["name"] for c in insp.get_columns(table.name)}
+                for col in table.columns:
+                    if col.name in present or not col.nullable or col.primary_key:
+                        continue
+                    # DDL identifiers can't be bound parameters. Names and types come from
+                    # our own model metadata (never user input); validate and quote anyway.
+                    if not (_IDENT.fullmatch(table.name) and _IDENT.fullmatch(col.name)):
+                        raise ValueError(f"Refusing unusual identifier {table.name}.{col.name}")
+                    ddl_type = col.type.compile(dialect=self.engine.dialect)
+                    if not _DDL_TYPE.fullmatch(ddl_type):
+                        raise ValueError(f"Refusing unusual column type {ddl_type!r}")
+                    stmt = (
+                        f"ALTER TABLE {quote(table.name)} ADD COLUMN {quote(col.name)} {ddl_type}"
+                    )
+                    conn.execute(text(stmt))
+                    added.append(f"{table.name}.{col.name}")
+        return added
 
     @contextmanager
     def session(self) -> Iterator[Session]:

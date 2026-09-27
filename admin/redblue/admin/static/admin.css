@@ -37,3 +37,6 @@ select,.rb-admin input,.rb-admin textarea{font:inherit;padding:.4rem .5rem;borde
 .rb-revisions{padding-left:1.2rem;font-size:.9rem}
 .rb-login{margin:4rem auto}
 @media (max-width:60rem){.rb-admin__layout,.rb-editor{grid-template-columns:1fr}.rb-admin__nav{border-right:0;border-bottom:1px solid var(--rb-border)}.rb-admin__nav ul{display:flex;flex-wrap:wrap}}
+.rb-renders{display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-start}
+.rb-renders figure{margin:0}
+.rb-renders video{background:#000;border-radius:8px;max-width:100%}

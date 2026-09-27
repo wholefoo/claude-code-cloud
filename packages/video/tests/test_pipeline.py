@@ -140,6 +140,18 @@ def test_admin_flow(tmp_path, monkeypatch):
     assert "<video" in page and "Approve" in page
     v = c.get(f"{url}/video.mp4")
     assert v.status_code == 200 and v.headers["content-type"] == "video/mp4"
+    r = c.post(
+        f"{url}/look", data={"csrf_token": tok, "template": "clean", "formats": ["9:16", "1:1"]}
+    )
+    assert "Look saved" in r.text
+    r = c.post(f"{url}/step", data={"csrf_token": tok, "action": "render"})
+    page = c.get(url).text
+    assert 'value="clean" selected' in page and "?format=1x1" in page
+    assert c.get(f"{url}/video.mp4?format=1x1").status_code == 200
+    assert c.get(f"{url}/video.mp4?format=16x9").status_code == 404  # not rendered
+    assert c.get(f"{url}/video.mp4?format=..%2Fetc").status_code == 404
+    bad = c.post(f"{url}/look", data={"csrf_token": tok, "template": "fancy"})
+    assert "Unknown template" in bad.text
     script = json.loads(
         json.dumps(
             {
@@ -218,3 +230,50 @@ def _vconf_fake_whisper():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod.FakeWhisper()
+
+
+def test_multiple_formats_and_template(platform, no_keys):
+    pipe = Pipeline(platform, no_keys, _vconf.offline())
+    with platform.db.session() as db:
+        p = pipe.start_project(db, topic="Heat pumps")
+        pipe.set_look(p, "news", ["16:9", "9:16", "16x9"])
+        assert p.template == "news" and p.formats == ["16:9", "9:16"]  # deduped, normalised
+        pipe.run(db, p)
+        assert p.status == "review"
+        assert set(p.renders) == {"16:9", "9:16"}
+        assert p.render_path == p.renders["16:9"]  # first format is the primary render
+        assert all(Path(v).exists() for v in p.renders.values())
+        import pytest
+
+        with pytest.raises(ValueError):
+            pipe.set_look(p, "news", ["21:9"])
+
+
+def test_old_video_table_is_upgraded(tmp_path):
+    """Databases from before templates existed gain the new columns automatically."""
+    import sqlite3
+
+    from sqlalchemy import inspect
+
+    from redblue.core.db import Database
+
+    path = tmp_path / "old.db"
+    with sqlite3.connect(path) as con:
+        con.execute(
+            "CREATE TABLE rb_video_projects (id INTEGER PRIMARY KEY, trend_id INTEGER, "
+            "topic VARCHAR(300), status VARCHAR(20), brief JSON, script JSON, "
+            "assets JSON, render_path VARCHAR(1000), problems JSON, review_note TEXT, "
+            "reviewed_by INTEGER, ai_generated BOOLEAN, created_at DATETIME, "
+            "updated_at DATETIME)"
+        )
+        con.execute(
+            "INSERT INTO rb_video_projects (id, topic, status, assets, problems, "
+            "review_note, ai_generated) VALUES (1, 'old', 'review', '[]', '[]', '', 1)"
+        )
+    db = Database(f"sqlite:///{path}")
+    db.create_all()
+    cols = {c["name"] for c in inspect(db.engine).get_columns("rb_video_projects")}
+    assert {"template", "formats", "renders"} <= cols
+    with db.session() as s:
+        p = s.get(VideoProject, 1)
+        assert p.topic == "old" and p.template is None and p.renders is None

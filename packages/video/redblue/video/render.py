@@ -1,4 +1,4 @@
-"""FFmpeg renderer: one vertical MP4 from a script, per-beat footage and narration.
+"""FFmpeg renderer: one MP4 per format from a script, per-beat footage and narration.
 
 Text overlays and captions are burned in from a generated ASS subtitle file (libass), so no
 drawtext/fontfile setup is needed. Works with the static binary from ``imageio-ffmpeg``."""
@@ -13,8 +13,7 @@ from pathlib import Path
 
 from redblue.video.captions import WordTiming, chunk, even_timings
 from redblue.video.schemas import Script
-
-PALETTE = ["#1f4fd1", "#0f1115", "#c2185b", "#1b7a3d", "#8a5a00"]
+from redblue.video.templates import FORMATS, TEMPLATES, Format, Template, TextStyle, ass_colour
 
 
 class RenderError(RuntimeError):
@@ -79,39 +78,63 @@ def _ass_text(text: str) -> str:
     return text.replace("\\", "").replace("{", "(").replace("}", ")").replace("\n", " ").strip()
 
 
+def _style(name: str, st: TextStyle, fmt: Format, primary: str, secondary: str) -> str:
+    sc = fmt.scale
+    if st.box:  # BorderStyle 3: the "outline" colour paints an opaque box
+        border, outline_c = 3, ass_colour(st.box_colour, st.box_alpha)
+        back = ass_colour("#000000", 0xFF)
+    else:
+        border, outline_c = 1, ass_colour("#000000", 0)
+        back = ass_colour("#000000", 0x80)
+    return (
+        f"Style: {name},DejaVu Sans,{round(st.size * sc)},{primary},{secondary},"
+        f"{outline_c},{back},{-1 if st.bold else 0},0,0,0,100,100,0,0,{border},"
+        f"{round(st.outline * sc)},{round(st.shadow * sc)},{st.align},"
+        f"{round(0.07 * fmt.width)},{round(0.07 * fmt.width)},"
+        f"{round(st.margin * fmt.height)},1"
+    )
+
+
 def build_ass(
     script: Script,
     durations: list[float],
-    width: int,
-    height: int,
+    fmt: Format | None = None,
+    template: Template | None = None,
     words: list[list[WordTiming] | None] | None = None,
 ) -> str:
-    """Title per beat plus word-grouped captions. With word timings (Whisper), captions
-    follow the narration and each word fills in karaoke-style as it is spoken; without,
-    timings are spread by word length."""
-    head = f"""[Script Info]
-ScriptType: v4.00+
-PlayResX: {width}
-PlayResY: {height}
-WrapStyle: 0
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Title,DejaVu Sans,86,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,6,2,8,80,80,260,1
-Style: Caption,DejaVu Sans,64,&H0000FFFF,&H00FFFFFF,&H00000000,&H96000000,-1,0,0,0,100,100,0,0,3,4,0,2,90,90,420,1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-"""
+    """Title per beat plus word-grouped captions in the template's style, sized for the
+    format. With word timings (Whisper), captions follow the narration and each word fills
+    with the highlight colour as it is spoken; without, timings are spread by word length."""
+    fmt = fmt or FORMATS["9:16"]
+    tpl = template or TEMPLATES["bold"]
+    cap = tpl.caption
+    styles = [_style("Caption", cap, fmt, ass_colour(tpl.highlight), ass_colour(cap.colour))]
+    if tpl.title:
+        styles.append(
+            _style(
+                "Title", tpl.title, fmt, ass_colour(tpl.title.colour), ass_colour(tpl.title.colour)
+            )
+        )
+    head = (
+        "[Script Info]\nScriptType: v4.00+\n"
+        f"PlayResX: {fmt.width}\nPlayResY: {fmt.height}\nWrapStyle: 0\n\n"
+        "[V4+ Styles]\n"
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, "
+        "BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, "
+        "BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
+        + "\n".join(styles)
+        + "\n\n[Events]\n"
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+    )
     lines = []
     t = 0.0
     for i, (beat, d) in enumerate(zip(script.beats, durations, strict=True)):
-        if beat.on_screen_text:
+        if tpl.title and beat.on_screen_text:
             lines.append(
                 f"Dialogue: 0,{_ts(t)},{_ts(t + d)},Title,,0,0,0,,{_ass_text(beat.on_screen_text)}"
             )
         timed = (words[i] if words and i < len(words) else None) or even_timings(beat.narration, d)
-        groups = chunk([w for w in timed if w.start < d])
+        groups = chunk([w for w in timed if w.start < d], max_words=fmt.words_per_line)
         for j, group in enumerate(groups):
             start = group[0].start
             nxt = groups[j + 1][0].start if j + 1 < len(groups) else d
@@ -133,10 +156,13 @@ def render(
     media: list[BeatMedia],
     out: Path,
     *,
-    width: int = 1080,
-    height: int = 1920,
+    fmt: Format | None = None,
+    template: Template | None = None,
     fps: int = 30,
 ) -> Path:
+    fmt = fmt or FORMATS["9:16"]
+    tpl = template or TEMPLATES["bold"]
+    width, height = fmt.width, fmt.height
     if len(media) != len(script.beats):
         raise RenderError("Need one BeatMedia per beat.")
     out = Path(out).resolve()
@@ -150,13 +176,16 @@ def render(
             durations.append(d)
             vf = (
                 f"scale={width}:{height}:force_original_aspect_ratio=increase,"
-                f"crop={width}:{height},setsar=1,fps={fps},format=yuv420p"
+                f"crop={width}:{height},setsar=1,fps={fps}"
             )
             if m.clip:
                 vin = ["-stream_loop", "-1", "-i", str(m.clip)]
+                if tpl.footage_filter:
+                    vf += "," + tpl.footage_filter
             else:
-                color = PALETTE[i % len(PALETTE)]
+                color = tpl.palette[i % len(tpl.palette)]
                 vin = ["-f", "lavfi", "-i", f"color=c={color}:s={width}x{height}:r={fps}"]
+            vf += ",format=yuv420p"
             _run(
                 [
                     *vin,
@@ -189,17 +218,27 @@ def render(
         _run(["-f", "concat", "-safe", "0", "-i", "v.txt", "-c", "copy", "video.mp4"], work)
         _run(["-f", "concat", "-safe", "0", "-i", "a.txt", "-c", "copy", "audio.wav"], work)
         (work / "subs.ass").write_text(
-            build_ass(script, durations, width, height, [m.words for m in media]),
-            encoding="utf-8",
+            build_ass(script, durations, fmt, tpl, [m.words for m in media]), encoding="utf-8"
         )
+        total = round(sum(durations), 2)
+        inputs = ["-i", "video.mp4", "-i", "audio.wav"]
+        if tpl.progress:
+            bar_h = max(4, round(10 * fmt.scale))
+            y = 0 if tpl.progress_edge == "top" else height - bar_h
+            colour = "0x" + tpl.progress.lstrip("#")
+            inputs += ["-f", "lavfi", "-i", f"color=c={colour}:s={width}x{bar_h}:r={fps}"]
+            # The bar slides in from the left, reaching full width at the end of the video.
+            graph = (
+                f"[0:v]ass=subs.ass[v];[v][2:v]overlay=x='-W+W*t/{total}':y={y}:"
+                "eval=frame:shortest=1[out]"
+            )
+            vmap = ["-filter_complex", graph, "-map", "[out]", "-map", "1:a"]
+        else:
+            vmap = ["-vf", "ass=subs.ass"]
         _run(
             [
-                "-i",
-                "video.mp4",
-                "-i",
-                "audio.wav",
-                "-vf",
-                "ass=subs.ass",
+                *inputs,
+                *vmap,
                 "-c:v",
                 "libx264",
                 "-preset",
@@ -212,7 +251,8 @@ def render(
                 "aac",
                 "-b:a",
                 "160k",
-                "-shortest",
+                "-t",
+                f"{total}",
                 "-movflags",
                 "+faststart",
                 str(out),

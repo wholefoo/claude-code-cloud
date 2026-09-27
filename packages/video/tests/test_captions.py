@@ -70,7 +70,7 @@ def test_ass_uses_word_timings_with_karaoke_tags():
         ],
         None,
     ]
-    ass = build_ass(s, [2.0, 2.0], 1080, 1920, words)
+    ass = build_ass(s, [2.0, 2.0], words=words)
     events = [line for line in ass.splitlines() if line.startswith("Dialogue: 1")]
     assert events[0].startswith("Dialogue: 1,0:00:00.50,")  # starts when speech starts
     assert "{\\kf40}Hello" in events[0] and "{\\kf40}world" in events[0]
@@ -100,9 +100,9 @@ def test_render_passes_word_timings_to_captions(tmp_path, monkeypatch):
     seen = {}
     real = R.build_ass
 
-    def spy(script, durations, width, height, words=None):
+    def spy(script, durations, fmt=None, template=None, words=None):
         seen["words"] = words
-        return real(script, durations, width, height, words)
+        return real(script, durations, fmt, template, words)
 
     monkeypatch.setattr(R, "build_ass", spy)
     s = Script(
@@ -115,7 +115,5 @@ def test_render_passes_word_timings_to_captions(tmp_path, monkeypatch):
         ],
     )
     timed = [WordTiming("Hello", 0.2, 0.6), WordTiming("world", 0.6, 1.0)]
-    R.render(
-        s, [R.BeatMedia(words=timed), R.BeatMedia()], tmp_path / "out.mp4", width=320, height=568
-    )
+    R.render(s, [R.BeatMedia(words=timed), R.BeatMedia()], tmp_path / "out.mp4")
     assert seen["words"] == [timed, None]
