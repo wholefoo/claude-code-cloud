@@ -58,6 +58,16 @@ def test_sarif_and_markdown(demo):
     s = report.sarif(rep)
     assert s["version"] == "2.1.0" and s["runs"][0]["results"]
     assert all("partialFingerprints" in r for r in s["runs"][0]["results"])
+    # Accepted findings stay out of SARIF (code scanning ignores suppressions) but remain
+    # available on request and in the Markdown report.
+    from redblue.gate.schemas import FindingStatus
+
+    rep.findings[0].status = FindingStatus.accepted
+    accepted_fp = rep.findings[0].fingerprint
+    fps = {r["partialFingerprints"]["redblue/v1"] for r in report.sarif(rep)["runs"][0]["results"]}
+    assert accepted_fp not in fps
+    full = report.sarif(rep, include_suppressed=True)["runs"][0]["results"]
+    assert any(r.get("suppressions") for r in full)
     md = report.markdown(rep, dec)
     assert "Gate failed" in md and "| Severity |" in md
 
