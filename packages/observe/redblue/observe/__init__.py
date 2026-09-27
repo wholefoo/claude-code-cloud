@@ -9,6 +9,7 @@ from collections.abc import Iterable
 from datetime import timedelta
 
 from fastapi import FastAPI
+
 from redblue.observe.dashboard import anomalies_view, dashboard_snapshot, observe_router
 from redblue.observe.logging import configure_logging, get_request_id
 from redblue.observe.middleware import ObservabilityMiddleware

@@ -5,7 +5,6 @@ from __future__ import annotations
 import enum
 from datetime import datetime
 
-from redblue.core.db import Base, TimestampMixin, utcnow
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -18,6 +17,8 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
+
+from redblue.core.db import Base, TimestampMixin, utcnow
 
 
 class Status(enum.StrEnum):

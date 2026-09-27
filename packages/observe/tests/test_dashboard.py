@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import select
+
 from redblue.core.auth import Role, create_user
 from redblue.observe import dashboard_snapshot, store
 from redblue.observe.models import ErrorGroup
-from sqlalchemy import select
 
 GETS = ["/metrics", "/errors", "/anomalies", "/agent-costs", "/deploys", "/uptime"]
 P = "/admin/observe"

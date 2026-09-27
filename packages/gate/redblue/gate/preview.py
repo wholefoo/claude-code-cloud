@@ -21,6 +21,7 @@ from typing import Any, Literal
 from urllib.parse import urlsplit
 
 import httpx
+
 from redblue.gate.config import GateConfig
 
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "testserver", "::1", "[::1]"})

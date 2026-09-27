@@ -1,0 +1,16 @@
+{% extends "admin/base.html" %}
+{% block title %}Redirects{% endblock %}
+{% block main %}
+<h1>Redirects</h1>
+<p class="rb-muted">301s are created automatically when a published page's slug changes. Chains are collapsed.</p>
+<form class="rb-form rb-inline" method="post" action="/admin/redirects">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>From path <input name="from_path" placeholder="/old-page" required pattern="/.*"></label>
+  <label>To <input name="to_path" placeholder="/new-page" required></label>
+  <button class="rb-btn rb-btn--primary" type="submit">Add</button>
+</form>
+<table class="rb-table"><thead><tr><th scope="col">From</th><th scope="col">To</th><th scope="col">Type</th><th scope="col">Hits</th><th scope="col"></th></tr></thead><tbody>
+{% for r in items %}<tr><td><code>{{ r.from_path }}</code></td><td><code>{{ r.to_path }}</code></td><td>{{ r.status_code }}{% if r.automatic %} auto{% endif %}</td><td>{{ r.hits }}</td><td><form method="post" action="/admin/redirects/{{ r.id }}/delete"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rb-link">Delete</button></form></td></tr>
+{% else %}<tr><td colspan="5" class="rb-muted">No redirects.</td></tr>{% endfor %}
+</tbody></table>
+{% endblock %}

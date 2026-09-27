@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     locales: list[str] = Field(default_factory=lambda: ["en"])
     organization_name: str | None = None
     organization_logo: str | None = None
+    oauth_github_client_id: str | None = None
+    oauth_github_client_secret: SecretStr | None = None
+    oauth_google_client_id: str | None = None
+    oauth_google_client_secret: SecretStr | None = None
     maintenance_mode: bool = False
     theme_tokens: dict = Field(default_factory=dict)  # overrides for redblue.templates.Tokens
     min_publish_words: int = 150  # growth guardrail: thin-content threshold
@@ -76,6 +80,20 @@ class Settings(BaseSettings):
     @property
     def secure_cookies(self) -> bool:
         return self.base_url.startswith("https://")
+
+    def oauth_providers(self) -> dict:
+        from redblue.core.auth import OAuthProvider
+
+        out = {}
+        if self.oauth_github_client_id and self.oauth_github_client_secret:
+            out["github"] = OAuthProvider.github(
+                self.oauth_github_client_id, self.oauth_github_client_secret.get_secret_value()
+            )
+        if self.oauth_google_client_id and self.oauth_google_client_secret:
+            out["google"] = OAuthProvider.google(
+                self.oauth_google_client_id, self.oauth_google_client_secret.get_secret_value()
+            )
+        return out
 
     @property
     def models(self) -> AgentModels:

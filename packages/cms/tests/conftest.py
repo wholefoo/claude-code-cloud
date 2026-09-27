@@ -1,4 +1,5 @@
 import pytest
+
 from redblue.core.auth import Role, create_user
 from redblue.core.db import Database
 

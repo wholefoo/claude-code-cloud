@@ -6,6 +6,7 @@ import html
 import re
 
 from markupsafe import Markup, escape
+
 from redblue.cms.service import slugify
 from redblue.core.security import is_safe_link
 

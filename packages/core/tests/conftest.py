@@ -8,8 +8,13 @@ from redblue.core.config import Settings
 
 @pytest.fixture
 def settings(tmp_path):
-    return Settings(database_url="sqlite://", env="test", storage_dir=tmp_path / "media",
-                    secret_key="x" * 48, base_url="http://testserver")
+    return Settings(
+        database_url="sqlite://",
+        env="test",
+        storage_dir=tmp_path / "media",
+        secret_key="x" * 48,
+        base_url="http://testserver",
+    )
 
 
 @pytest.fixture

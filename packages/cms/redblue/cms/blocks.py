@@ -10,6 +10,7 @@ import re
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
 from redblue.core.security import is_safe_link
 
 

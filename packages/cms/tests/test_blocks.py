@@ -1,28 +1,34 @@
 import pytest
 from pydantic import ValidationError
+
 from redblue.cms.blocks import blocks_text, validate_blocks
 from redblue.cms.render import inline
 
 
 def test_valid_blocks_roundtrip():
-    out = validate_blocks([
-        {"type": "heading", "text": "Hello"},
-        {"type": "paragraph", "text": "See [docs](/docs) and **bold**."},
-        {"type": "faq", "items": [{"question": "Why?", "answer": "Because."}]},
-        {"type": "image", "src": "/media/x.png", "alt": "A chart"},
-    ])
+    out = validate_blocks(
+        [
+            {"type": "heading", "text": "Hello"},
+            {"type": "paragraph", "text": "See [docs](/docs) and **bold**."},
+            {"type": "faq", "items": [{"question": "Why?", "answer": "Because."}]},
+            {"type": "image", "src": "/media/x.png", "alt": "A chart"},
+        ]
+    )
     assert out[0]["level"] == 2
     assert "Because." in blocks_text(out)
 
 
-@pytest.mark.parametrize("block", [
-    {"type": "paragraph", "text": "[x](javascript:alert(1))"},
-    {"type": "cta", "heading": "h", "button_label": "b", "button_url": "javascript:x"},
-    {"type": "image", "src": "/a.png"},  # no alt
-    {"type": "embed", "provider": "youtube", "video_id": "\"><script>", "title": "t"},
-    {"type": "html", "html": "<script>alert(1)</script>"},
-    {"type": "paragraph", "text": "ok", "onclick": "x"},
-])
+@pytest.mark.parametrize(
+    "block",
+    [
+        {"type": "paragraph", "text": "[x](javascript:alert(1))"},
+        {"type": "cta", "heading": "h", "button_label": "b", "button_url": "javascript:x"},
+        {"type": "image", "src": "/a.png"},  # no alt
+        {"type": "embed", "provider": "youtube", "video_id": '"><script>', "title": "t"},
+        {"type": "html", "html": "<script>alert(1)</script>"},
+        {"type": "paragraph", "text": "ok", "onclick": "x"},
+    ],
+)
 def test_unsafe_blocks_rejected(block):
     with pytest.raises(ValidationError):
         validate_blocks([block])

@@ -637,7 +637,8 @@ class _Visitor(ast.NodeVisitor):
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
             leaves = _concat_leaves(node)
             return any(
-                not isinstance(leaf, ast.Constant) and not _is_const_name(leaf)
+                not isinstance(leaf, ast.Constant)
+                and not _is_const_name(leaf)
                 and not _escaped(leaf)
                 and not (isinstance(leaf, ast.JoinedStr) and not self._unescaped_html(leaf))
                 for leaf in leaves

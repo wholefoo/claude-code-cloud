@@ -18,12 +18,13 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field
+from sqlalchemy import func, select
+
 from redblue.core.ai import untrusted
 from redblue.core.db import utcnow
 from redblue.observe.metrics import compare_windows
 from redblue.observe.models import Deploy, ErrorEvent, ErrorGroup, UptimeCheck
 from redblue.observe.store import DB, use_session
-from sqlalchemy import func, select
 
 if TYPE_CHECKING:
     from redblue.core.context import Platform

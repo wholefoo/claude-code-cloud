@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+
 from redblue.observe import UPTIME_JOB, install
 from redblue.observe.models import UptimeCheck
 from redblue.observe.otel import setup_otel, span
 from redblue.observe.uptime import run_checks, validate_path
-from sqlalchemy import select
 
 BAD = [
     "https://evil.example/",

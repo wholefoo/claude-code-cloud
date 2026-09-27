@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.testclient import TestClient
+
 from redblue.core.app import create_core_app
 from redblue.core.auth import User, login
 from redblue.core.config import Settings

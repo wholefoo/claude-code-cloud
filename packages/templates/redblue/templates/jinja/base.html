@@ -28,6 +28,7 @@
 <body class="rb-page rb-page--{{ page_type.key }}" hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}' data-rb-page="{{ page.url }}"{% if experiments %} data-rb-exp='{{ experiments | tojson }}'{% endif %}>
 <a class="rb-skip" href="#main">Skip to content</a>
 {% include "partials/header.html" %}
+{% if banner %}{% include "partials/banner.html" %}{% endif %}
 <main id="main" class="rb-main" tabindex="-1">
 {% block main %}{% endblock %}
 </main>

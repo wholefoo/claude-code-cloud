@@ -1,12 +1,16 @@
 import pytest
+
 from redblue.cms import service
 from redblue.cms.models import Redirect, Status
 from redblue.core.auth import Role
 
 
 def _input(**kw):
-    base = {"title": "Hello world", "summary": "A page", "blocks": [
-        {"type": "paragraph", "text": "Body text"}]}
+    base = {
+        "title": "Hello world",
+        "summary": "A page",
+        "blocks": [{"type": "paragraph", "text": "Body text"}],
+    }
     base.update(kw)
     return service.EntryInput(**base)
 

@@ -100,3 +100,9 @@ hr{border:0;border-top:1px solid var(--rb-border);margin:2rem 0}
 @media (max-width:48rem){.rb-layout--toc,.rb-docs,.rb-account{grid-template-columns:1fr}.rb-toc{position:static;order:-1}.rb-search{margin-left:0;width:100%}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 @media print{.rb-header,.rb-footer,.rb-toc{display:none}}
+.rb-banner{background:var(--rb-primary);color:var(--rb-primary-text)}
+.rb-banner a{color:inherit;font-weight:700}
+.rb-banner__inner{display:flex;align-items:center;gap:1rem;justify-content:space-between;min-height:3rem}
+.rb-banner__inner p{margin:.5rem 0}
+.rb-banner__close{background:none;border:0;color:inherit;font-size:1.5rem;min-width:44px;min-height:44px;cursor:pointer}
+.rb-banner[hidden]{display:none}

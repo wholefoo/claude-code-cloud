@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 
 import httpx
 from pydantic import BaseModel
+
 from redblue.core.db import utcnow
 from redblue.observe.models import UptimeCheck
 from redblue.observe.store import DB, use_session

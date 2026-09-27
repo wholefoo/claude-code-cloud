@@ -4,6 +4,8 @@ human review, validated against the block schemas before it is saved."""
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
 from redblue.cms import service
 from redblue.cms.blocks import Block
 from redblue.cms.collections import get_collection
@@ -11,7 +13,6 @@ from redblue.cms.models import Entry
 from redblue.cms.seo import SEOFields
 from redblue.core.ai import untrusted
 from redblue.core.context import Platform
-from sqlalchemy.orm import Session
 
 SYSTEM = """You are the RedBlue content agent. You write clear, accurate, people-first web
 content in structured blocks. Rules:

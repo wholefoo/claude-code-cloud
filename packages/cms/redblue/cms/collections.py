@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from redblue.core.security import is_safe_link
 
 

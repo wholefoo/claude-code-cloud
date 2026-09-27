@@ -10,11 +10,12 @@ from collections import defaultdict
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 
+from sqlalchemy import func, select
+
 from redblue.core.ai import AgentCall
 from redblue.core.db import utcnow
 from redblue.observe.models import Deploy, ErrorGroup, RequestMetric, UptimeCheck
 from redblue.observe.store import DB, use_session
-from sqlalchemy import func, select
 
 DEFAULT_WINDOW = timedelta(hours=24)
 

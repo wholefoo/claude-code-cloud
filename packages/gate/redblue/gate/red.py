@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field
+
 from redblue.gate.config import GateConfig
 from redblue.gate.llm import LLM, untrusted
 from redblue.gate.scanners import ScanContext, ScannerUnavailable, all_scanners, is_test_path
@@ -134,14 +135,16 @@ class RedAgent:
     def _dedupe_across_tools(findings: list[Finding]) -> list[Finding]:
         """Bandit/Semgrep and the built-in rules often flag the same line; keep the built-in
         finding (it carries fixer support) and note the corroborating tools."""
-        builtin = {(f.file, f.line): f for f in findings
-                   if f.tool == "redblue-sast" and f.file and f.line}
+        builtin = {
+            (f.file, f.line): f for f in findings if f.tool == "redblue-sast" and f.file and f.line
+        }
         out: list[Finding] = []
         for f in findings:
             twin = builtin.get((f.file, f.line)) if f.tool in ("bandit", "semgrep") else None
             if twin is not None:
-                twin.evidence = (twin.evidence + f" (also reported by {f.tool}: "
-                                 f"{f.rule_id})").strip()
+                twin.evidence = (
+                    twin.evidence + f" (also reported by {f.tool}: {f.rule_id})"
+                ).strip()
                 if twin.confidence != "high":
                     twin.confidence = "high"
                 continue
@@ -158,8 +161,9 @@ class RedAgent:
 
     def triage(self, report: ScanReport) -> None:
         # Asserts in test code are expected; drop them entirely rather than list them.
-        report.findings = [f for f in report.findings
-                           if not (is_test_path(f.file) and f.rule_id == "B101")]
+        report.findings = [
+            f for f in report.findings if not (is_test_path(f.file) and f.rule_id == "B101")
+        ]
         open_ = [f for f in report.findings if f.is_open]
         for f in open_:  # deterministic noise filters first
             if is_test_path(f.file) and f.rule_id in (

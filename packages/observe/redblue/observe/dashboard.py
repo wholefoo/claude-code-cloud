@@ -9,12 +9,13 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
 from redblue.core.auth import Role, User, require_role
 from redblue.core.context import get_db
 from redblue.observe import metrics
 from redblue.observe.ops import OpsAgent, describe
 from redblue.observe.store import DB, record_deploy, set_error_status
-from sqlalchemy.orm import Session
 
 
 class DeployIn(BaseModel):

@@ -29,8 +29,17 @@ def _scan_case(case: dict, use_ai: bool) -> list:
         path = root / case["file"]
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(case["code"])
-        cfg = parse_config({"scanners": {"pip_audit": False, "dast": False, "zap": False,
-                                         "nuclei": False, "semgrep": False}})
+        cfg = parse_config(
+            {
+                "scanners": {
+                    "pip_audit": False,
+                    "dast": False,
+                    "zap": False,
+                    "nuclei": False,
+                    "semgrep": False,
+                }
+            }
+        )
         report, _ = run_gate(cfg, root, use_ai=use_ai)
         return report.open_findings()
 
@@ -44,8 +53,9 @@ def evaluate(use_ai: bool = False, fixes: bool = False) -> dict:
         ok = set(case["expect"]) <= found
         hits += sum(1 for r in case["expect"] if r in found)
         expected_total += len(case["expect"])
-        rows.append({"case": case["name"], "kind": "vulnerable", "pass": ok,
-                     "found": sorted(found)})
+        rows.append(
+            {"case": case["name"], "kind": "vulnerable", "pass": ok, "found": sorted(found)}
+        )
     fp_cases = 0
     for case in safe:
         noisy = [f.rule_id for f in _scan_case(case, use_ai) if f.severity >= Severity.medium]
@@ -60,9 +70,12 @@ def evaluate(use_ai: bool = False, fixes: bool = False) -> dict:
         with tempfile.TemporaryDirectory() as tmp:
             demo = Path(tmp) / "demo"
             shutil.copytree(DEMO, demo)
-            report, _ = run_gate(parse_config({"app": "app:app",
-                                               "scanners": {"pip_audit": False}}),
-                                 demo, use_ai=use_ai, fix=True)
+            report, _ = run_gate(
+                parse_config({"app": "app:app", "scanners": {"pip_audit": False}}),
+                demo,
+                use_ai=use_ai,
+                fix=True,
+            )
         verified = sum(p.verified for p in report.fixes)
         result["fixes_proposed"] = len(report.fixes)
         result["fix_verification_rate"] = round(verified / max(1, len(report.fixes)), 3)
@@ -81,12 +94,15 @@ def main() -> int:
     for row in res["cases"]:
         mark = "PASS" if row["pass"] else "FAIL"
         print(f"{mark:4}  {row['kind']:10}  {row['case']:28}  {', '.join(row['found'])}")
-    print(f"\nrecall={res['recall']}  false_positive_rate={res['false_positive_rate']}"
-          + (f"  fix_verification_rate={res['fix_verification_rate']}" if args.fixes else ""))
+    print(
+        f"\nrecall={res['recall']}  false_positive_rate={res['false_positive_rate']}"
+        + (f"  fix_verification_rate={res['fix_verification_rate']}" if args.fixes else "")
+    )
     if args.json:
         Path(args.json).write_text(json.dumps(res, indent=2))
-    failed = (args.max_fp_rate is not None and res["false_positive_rate"] > args.max_fp_rate) or \
-             (args.min_recall is not None and res["recall"] < args.min_recall)
+    failed = (args.max_fp_rate is not None and res["false_positive_rate"] > args.max_fp_rate) or (
+        args.min_recall is not None and res["recall"] < args.min_recall
+    )
     return 1 if failed else 0
 
 

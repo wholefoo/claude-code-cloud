@@ -7,9 +7,10 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from fastapi import Request
+from sqlalchemy.orm import Session
+
 from redblue.core.config import Settings
 from redblue.core.db import Database
-from sqlalchemy.orm import Session
 
 if TYPE_CHECKING:
     from redblue.core.ai import AIClient

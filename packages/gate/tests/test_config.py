@@ -4,12 +4,15 @@ from redblue.gate.config import ConfigError, parse_config
 from redblue.gate.schemas import Severity
 
 
-@pytest.mark.parametrize("data", [
-    {"target": "https://example.com"},
-    {"url": "https://example.com"},
-    {"target_url": "https://example.com"},
-    {"scanners": {"dast": True}, "extra": {"base_url": "http://x"}},
-])
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"target": "https://example.com"},
+        {"url": "https://example.com"},
+        {"target_url": "https://example.com"},
+        {"scanners": {"dast": True}, "extra": {"base_url": "http://x"}},
+    ],
+)
 def test_rejects_target_urls(data):
     with pytest.raises(ConfigError, match="preview"):
         parse_config(data)

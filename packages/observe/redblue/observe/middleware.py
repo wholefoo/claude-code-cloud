@@ -10,13 +10,14 @@ import uuid
 from collections.abc import Callable, Iterable
 from typing import Any
 
-from redblue.core.db import Database
-from redblue.observe.logging import request_id_var
-from redblue.observe.store import capture_exception, record_request
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import MutableHeaders
 from starlette.routing import Mount
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+from redblue.core.db import Database
+from redblue.observe.logging import request_id_var
+from redblue.observe.store import capture_exception, record_request
 
 log = logging.getLogger("redblue.observe")
 

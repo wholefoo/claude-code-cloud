@@ -1,0 +1,41 @@
+{% extends "admin/base.html" %}
+{% block title %}Growth{% endblock %}
+{% block main %}
+<div class="rb-row"><h1>Growth</h1>
+<form method="post" action="/admin/growth/report"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rb-btn rb-btn--primary">Generate weekly report</button></form>
+<form method="post" action="/admin/growth/audit"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rb-btn">Run SEO/AEO audit</button></form>
+<a class="rb-btn" href="/admin/growth/social">Social drafts</a></div>
+
+{% if report %}
+<section class="rb-card"><h2>{{ report.headline }}</h2>
+{% if report.working %}<p><strong>Working:</strong> {{ report.working | join(", ") }}</p>{% endif %}
+<table class="rb-table"><thead><tr><th scope="col">Priority</th><th scope="col">Recommendation</th><th scope="col">Why</th><th scope="col">Action</th></tr></thead><tbody>
+{% for r in report.recommendations %}<tr><td>{{ r.priority }}</td><td>{{ r.title }}</td><td>{{ r.why }}</td><td>{{ r.action | replace("_", " ") }}</td></tr>{% endfor %}
+</tbody></table></section>
+{% endif %}
+
+<div class="rb-two">
+<section><h2>Traffic (30 days)</h2>
+<p>{{ traffic.visitors }} daily visitors · {{ traffic.pageviews }} pageviews · cookieless</p>
+<table class="rb-table"><caption>Sources</caption><tbody>{% for s, n in traffic.sources %}<tr><th scope="row">{{ s }}</th><td>{{ n }}</td></tr>{% endfor %}</tbody></table>
+<table class="rb-table"><caption>AI assistant referrals</caption><tbody>{% for a, n in traffic.ai_assistants %}<tr><th scope="row">{{ a }}</th><td>{{ n }}</td></tr>{% else %}<tr><td class="rb-muted">None yet.</td></tr>{% endfor %}</tbody></table>
+<table class="rb-table"><caption>Goals</caption><tbody>{% for g in conversions %}<tr><th scope="row">{{ g.goal }}</th><td>{{ g.converters }}</td><td>{{ (g.rate * 100) | round(2) }}%</td></tr>{% else %}<tr><td class="rb-muted">No goals yet. Add <code>data-rb-goal="name"</code> to links.</td></tr>{% endfor %}</tbody></table>
+</section>
+<section><h2>Question coverage <small>{{ (coverage.score * 100) | round | int }}%</small></h2>
+<table class="rb-table"><tbody>{% for q in coverage.questions[:30] %}<tr><td>{{ q.question }}</td><td><span class="rb-cov rb-cov--{{ q.status }}">{{ q.status }}</span></td><td class="rb-muted">{{ q.page }}</td></tr>{% else %}<tr><td class="rb-muted">Add target questions to entries or import Search Console data.</td></tr>{% endfor %}</tbody></table>
+<form class="rb-form" method="post" action="/admin/growth/search-console" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Import Search Console CSV <input type="file" name="file" accept=".csv,text/csv" required></label><button class="rb-btn">Import</button></form>
+</section>
+</div>
+
+<div class="rb-two">
+<section><h2>Stale pages</h2><ul>{% for s in stale %}<li><a href="/admin/content/{{ s.id }}">{{ s.title }}</a>: {{ s.reasons | join("; ") }}</li>{% else %}<li class="rb-muted">Everything looks fresh.</li>{% endfor %}</ul>
+<h2>Internal link suggestions</h2><ul>{% for l in links %}<li><a href="/admin/content/{{ l.from_id }}">{{ l.from }}</a> → <a href="{{ l.to_url }}">{{ l.to }}</a></li>{% else %}<li class="rb-muted">No suggestions.</li>{% endfor %}</ul></section>
+<section><h2>UTM link builder</h2>
+<form class="rb-form" hx-post="/admin/growth/utm" hx-target="#utm-out"><label>URL <input name="url" required placeholder="https://example.com/pricing"></label><div class="rb-two"><label>Source <input name="source" required placeholder="newsletter"></label><label>Medium <input name="medium" required placeholder="email"></label></div><label>Campaign <input name="campaign" required placeholder="spring_launch"></label><button class="rb-btn">Build link</button></form><div id="utm-out" aria-live="polite"></div>
+<h2>AI crawler access</h2><p class="rb-muted">Set <code>RB_AI_CRAWLERS_ALLOWED</code> and <code>RB_AI_CRAWLER_OVERRIDES</code> (JSON) to change. Published in <a href="/robots.txt">robots.txt</a>.</p>
+<table class="rb-table"><tbody>{% for c in crawlers %}<tr><th scope="row">{{ c.name }}</th><td>{{ c.purpose }}</td><td>{{ "allowed" if c.allowed else "blocked" }}</td></tr>{% endfor %}</tbody></table></section>
+</div>
+
+<section><h2>Content calendar</h2>
+<table class="rb-table"><tbody>{% for day, items in calendar.items() %}<tr><th scope="row">{{ day }}</th><td>{% for i in items %}<a href="/admin/content/{{ i.id }}">{{ i.title }}</a> <span class="rb-status-pill rb-status-pill--{{ i.status }}">{{ i.status | replace("_", " ") }}</span>{% if not loop.last %}<br>{% endif %}{% endfor %}</td></tr>{% endfor %}</tbody></table></section>
+{% endblock %}

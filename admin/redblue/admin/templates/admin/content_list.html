@@ -1,0 +1,19 @@
+{% extends "admin/base.html" %}
+{% block title %}Content{% endblock %}
+{% block main %}
+<div class="rb-row"><h1>Content</h1>
+<form method="get" action="/admin/content/new" class="rb-inline"><label class="rb-sr" for="nc">Collection</label><select id="nc" name="collection">{% for c in collections.values() %}<option value="{{ c.name }}">{{ c.label }}</option>{% endfor %}</select> <button class="rb-btn rb-btn--primary" type="submit">New entry</button></form></div>
+<form method="get" class="rb-filters">
+  <label>Collection <select name="collection"><option value="">All</option>{% for c in collections.values() %}<option value="{{ c.name }}"{% if c.name == collection %} selected{% endif %}>{{ c.label }}</option>{% endfor %}</select></label>
+  <label>Status <select name="status"><option value="">All</option>{% for s in statuses %}<option value="{{ s }}"{% if s == status %} selected{% endif %}>{{ s | replace("_", " ") }}</option>{% endfor %}</select></label>
+  <label>Search <input name="q" value="{{ q }}"></label>
+  <button class="rb-btn" type="submit">Filter</button>
+</form>
+<table class="rb-table">
+<thead><tr><th scope="col">Title</th><th scope="col">Collection</th><th scope="col">Status</th><th scope="col">Live</th><th scope="col">Updated</th></tr></thead>
+<tbody>
+{% for e in entries %}
+<tr><td><a href="/admin/content/{{ e.id }}">{{ e.title }}</a>{% if e.ai_generated %} <span class="rb-badge">AI</span>{% endif %}</td><td>{{ collections[e.collection].label }}</td><td><span class="rb-status-pill rb-status-pill--{{ e.status.value }}">{{ e.status.value | replace("_", " ") }}</span></td><td>{{ "✓" if e.is_live else "" }}</td><td>{{ e.updated_at | datefmt("%Y-%m-%d %H:%M") }}</td></tr>
+{% else %}<tr><td colspan="5" class="rb-muted">No entries.</td></tr>{% endfor %}
+</tbody></table>
+{% endblock %}

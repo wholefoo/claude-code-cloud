@@ -24,19 +24,34 @@ def test_csrf_blocks_missing_and_wrong_tokens(app, client):
     assert client.post("/thing", data={"csrf_token": client.cookies["rb_csrf"]}).status_code == 200
 
 
-@pytest.mark.parametrize("url,ok", [
-    ("/about", True), ("https://example.com", True), ("mailto:a@b.co", True),
-    ("javascript:alert(1)", False), ("JaVaScRiPt:alert(1)", False), ("data:text/html,x", False),
-    ("//evil.com", False), ("java\tscript:alert(1)", False),
-])
+@pytest.mark.parametrize(
+    "url,ok",
+    [
+        ("/about", True),
+        ("https://example.com", True),
+        ("mailto:a@b.co", True),
+        ("javascript:alert(1)", False),
+        ("JaVaScRiPt:alert(1)", False),
+        ("data:text/html,x", False),
+        ("//evil.com", False),
+        ("java\tscript:alert(1)", False),
+    ],
+)
 def test_is_safe_link(url, ok):
     assert security.is_safe_link(url) is ok
 
 
-@pytest.mark.parametrize("target,expected", [
-    ("/admin", "/admin"), ("https://evil.com", "/"), ("//evil.com", "/"), ("/\\evil.com", "/"),
-    (None, "/"), ("admin", "/"),
-])
+@pytest.mark.parametrize(
+    "target,expected",
+    [
+        ("/admin", "/admin"),
+        ("https://evil.com", "/"),
+        ("//evil.com", "/"),
+        ("/\\evil.com", "/"),
+        (None, "/"),
+        ("admin", "/"),
+    ],
+)
 def test_safe_redirect(target, expected):
     assert security.safe_redirect_target(target) == expected
 
@@ -57,7 +72,13 @@ def test_rate_limiter():
 
 def test_upload_validation(tmp_path):
     st = storage.LocalStorage(tmp_path, 1024 * 1024, "s")
-    png = b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR" + (16).to_bytes(4, "big") + (9).to_bytes(4, "big") + b"\x00" * 20
+    png = (
+        b"\x89PNG\r\n\x1a\n"
+        + b"\x00\x00\x00\rIHDR"
+        + (16).to_bytes(4, "big")
+        + (9).to_bytes(4, "big")
+        + b"\x00" * 20
+    )
     f = st.put(png, "My Photo!!.png")
     assert f.mime == "image/png" and f.key.startswith("my-photo-") and f.key.endswith(".png")
     assert storage.image_dimensions(png) == (16, 9)

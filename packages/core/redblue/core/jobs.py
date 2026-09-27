@@ -11,9 +11,10 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
 
-from redblue.core.db import Base, Database, utcnow
 from sqlalchemy import JSON, DateTime, Integer, String, Text, select, update
 from sqlalchemy.orm import Mapped, mapped_column
+
+from redblue.core.db import Base, Database, utcnow
 
 log = logging.getLogger("redblue.jobs")
 

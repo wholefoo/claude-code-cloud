@@ -10,14 +10,15 @@ from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
+from sqlalchemy import Text, cast, func, or_, select
+from sqlalchemy.orm import Session
+
 from redblue.cms.blocks import blocks_text, validate_blocks
 from redblue.cms.collections import get_collection, validate_data
 from redblue.cms.models import Entry, Redirect, Revision, Status
 from redblue.cms.seo import SEOFields
 from redblue.core.auth import Role, User
 from redblue.core.db import utcnow
-from sqlalchemy import Text, cast, func, or_, select
-from sqlalchemy.orm import Session
 
 
 class WorkflowError(Exception):

@@ -1,0 +1,82 @@
+{% extends "admin/base.html" %}
+{% block title %}{{ entry.title if entry else "New " ~ collections[collection].label }}{% endblock %}
+{% block main %}
+<div class="rb-row">
+  <h1>{{ entry.title if entry else "New entry" }} <small class="rb-muted">{{ collections[collection].label }}</small></h1>
+  {% if entry %}
+  <span class="rb-status-pill rb-status-pill--{{ entry.status.value }}">{{ entry.status.value | replace("_", " ") }}</span>
+  {% if entry.is_live %}<a href="{{ public_path }}" target="_blank" rel="noopener">View live ↗</a>{% endif %}
+  <a href="/admin/content/{{ entry.id }}/preview" target="_blank" rel="noopener">Preview draft ↗</a>
+  {% endif %}
+</div>
+{% if entry and entry.ai_generated %}<p class="rb-callout rb-callout--warning">Written or edited by an AI agent. Check every fact before submitting.</p>{% endif %}
+{% if entry and entry.review_note %}<p class="rb-callout rb-callout--warning"><strong>Editor note:</strong> {{ entry.review_note }}</p>{% endif %}
+{% if errors %}<div class="rb-error" role="alert"><p><strong>Please fix:</strong></p><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+<div class="rb-editor">
+<form class="rb-form rb-form--wide" method="post" action="{{ '/admin/content/%d' % entry.id if entry else '/admin/content/new?collection=' ~ collection }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>Title <input name="title" value="{{ form.title }}" required maxlength="300"></label>
+  <div class="rb-two">
+    <label>Slug <input name="slug" value="{{ form.slug }}" pattern="[a-z0-9][a-z0-9\-]*" placeholder="auto from title"></label>
+    <label>Locale <input name="locale" value="{{ form.locale }}" pattern="[a-z]{2}(-[A-Z]{2})?"></label>
+  </div>
+  <label>Summary (used as meta description fallback) <textarea name="summary" rows="2">{{ form.summary }}</textarea></label>
+  <label>Blocks (JSON) <textarea name="blocks" rows="18" class="rb-code-input" spellcheck="false">{{ form.blocks }}</textarea></label>
+  <p class="rb-muted">Block types: {% for t in block_types %}<code>{{ t }}</code>{% if not loop.last %}, {% endif %}{% endfor %}. Content is validated: no raw HTML, safe links only, images need alt text.</p>
+  <label>{{ collections[collection].label }} fields (JSON) <textarea name="data" rows="5" class="rb-code-input" spellcheck="false">{{ form.data }}</textarea></label>
+  <div class="rb-two">
+    <label>Tags (comma separated) <input name="tags" value="{{ form.tags }}"></label>
+    <label>Category <input name="category" value="{{ form.category }}"></label>
+  </div>
+  <fieldset class="rb-seo">
+    <legend>SEO &amp; AEO</legend>
+    <label>SEO title <input name="seo_title" value="{{ form.seo_title }}" maxlength="120"></label>
+    <label>Meta description <textarea name="seo_description" rows="2" maxlength="320">{{ form.seo_description }}</textarea></label>
+    <div class="rb-two">
+      <label>Canonical URL <input name="canonical" value="{{ form.canonical }}"></label>
+      <label>Schema type <select name="schema_type"><option value="">Default for page type</option>{% for s in schema_types %}<option{% if s == form.schema_type %} selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
+    </div>
+    <label>Target questions (one per line) <textarea name="target_questions" rows="3">{{ form.target_questions }}</textarea></label>
+    <label>Keywords (comma separated) <input name="keywords" value="{{ form.keywords }}"></label>
+    <label class="rb-check"><input type="checkbox" name="noindex"{% if form.noindex %} checked{% endif %}> Hide from search engines (noindex)</label>
+    <label class="rb-check"><input type="checkbox" name="ai_label"{% if form.ai_label %} checked{% endif %}> Label as AI-assisted</label>
+  </fieldset>
+  <label>Revision note <input name="note" placeholder="What changed?"></label>
+  <button class="rb-btn rb-btn--primary" type="submit">{{ "Save draft" if entry else "Create draft" }}</button>
+</form>
+{% if entry %}
+<aside class="rb-editor__side">
+  <section class="rb-card">
+    <h2>Workflow</h2>
+    {% if problems %}<div class="rb-error"><p><strong>Publishing blocked:</strong></p><ul>{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul></div>{% endif %}
+    {% set s = entry.status.value %}
+    {% if s == "draft" %}
+      <form method="post" action="/admin/content/{{ entry.id }}/workflow"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rb-btn" name="action" value="submit">Submit for review</button></form>
+    {% endif %}
+    {% if s == "in_review" and user.has_role(Role.editor) %}
+      <form method="post" action="/admin/content/{{ entry.id }}/workflow"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rb-btn rb-btn--primary" name="action" value="approve">Approve</button></form>
+    {% endif %}
+    {% if s in ("in_review", "approved") and user.has_role(Role.editor) %}
+      <form method="post" action="/admin/content/{{ entry.id }}/workflow"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Note <input name="note" required></label><button class="rb-btn" name="action" value="request_changes">Request changes</button></form>
+    {% endif %}
+    {% if s in ("approved", "scheduled") and user.has_role(Role.publisher) %}
+      <form method="post" action="/admin/content/{{ entry.id }}/workflow"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Schedule for (optional) <input type="datetime-local" name="publish_at"></label><button class="rb-btn rb-btn--primary" name="action" value="publish">Publish</button></form>
+    {% endif %}
+    {% if entry.is_live and user.has_role(Role.publisher) %}
+      <form method="post" action="/admin/content/{{ entry.id }}/workflow"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rb-btn" name="action" value="unpublish">Unpublish</button></form>
+    {% endif %}
+  </section>
+  {% if warnings %}<section class="rb-card"><h2>SEO hints</h2><ul>{% for w in warnings %}<li>{{ w }}</li>{% endfor %}</ul></section>{% endif %}
+  <section class="rb-card">
+    <h2>Agents</h2>
+    <form method="post" action="/admin/content/{{ entry.id }}/refresh"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Refresh instructions <input name="instructions"></label><button class="rb-btn">Propose refresh</button></form>
+    {% if entry.is_live %}<form method="post" action="/admin/content/{{ entry.id }}/repurpose"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rb-btn">Repurpose to social/email drafts</button></form>{% endif %}
+  </section>
+  <section class="rb-card">
+    <h2>Revisions</h2>
+    <ol class="rb-revisions">{% for r in revisions[:15] %}<li><form method="post" action="/admin/content/{{ entry.id }}/rollback"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="revision" value="{{ r.number }}">#{{ r.number }} {{ r.note }}{% if r.by_agent %} <span class="rb-badge">{{ r.by_agent }}</span>{% endif %} <span class="rb-muted">{{ r.created_at | datefmt("%Y-%m-%d %H:%M") }}</span>{% if user.has_role(Role.editor) and not loop.first %} <button class="rb-link">restore</button>{% endif %}</form></li>{% endfor %}</ol>
+  </section>
+</aside>
+{% endif %}
+</div>
+{% endblock %}

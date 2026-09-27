@@ -1,0 +1,14 @@
+{% extends "admin/base.html" %}
+{% block title %}Social drafts{% endblock %}
+{% block main %}
+<h1>Social &amp; email drafts</h1>
+<p class="rb-callout rb-callout--info">RedBlue never posts or sends these. Edit, approve, then copy them into your own tools.</p>
+{% for d in drafts %}
+<form class="rb-card rb-form rb-form--wide" method="post" action="/admin/growth/social/{{ d.id }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <h2>{{ d.channel }} <span class="rb-status-pill">{{ d.status }}</span></h2>
+  <label class="rb-sr" for="d{{ d.id }}">Text</label><textarea id="d{{ d.id }}" name="text" rows="5">{{ d.text }}</textarea>
+  <div class="rb-inline"><button class="rb-btn" name="status" value="approved">Approve</button> <button class="rb-btn" name="status" value="archived">Archive</button></div>
+</form>
+{% else %}<p class="rb-muted">No drafts. Use “Repurpose” on a published entry.</p>{% endfor %}
+{% endblock %}

@@ -35,6 +35,23 @@
     }
   });
 
+  // Announcement banners: frequency cap and dismissal, stored only in this browser.
+  var banner = d.querySelector("[data-rb-banner]");
+  if (banner) {
+    var bkey = "rb-banner-" + banner.getAttribute("data-rb-banner");
+    var days = parseInt(banner.getAttribute("data-rb-banner-days") || "7", 10);
+    try {
+      var last = parseInt(localStorage.getItem(bkey) || "0", 10);
+      if (last && Date.now() - last < days * 864e5) banner.hidden = true;
+      else localStorage.setItem(bkey, String(Date.now()));
+    } catch (e) {}
+    var close = banner.querySelector("[data-rb-banner-close]");
+    if (close) close.addEventListener("click", function () {
+      banner.hidden = true;
+      try { localStorage.setItem(bkey, String(Date.now())); } catch (e) {}
+    });
+  }
+
   var root = d.documentElement, key = "rb-theme";
   try { var saved = localStorage.getItem(key); if (saved) root.setAttribute("data-theme", saved); } catch (e) {}
   d.addEventListener("click", function (ev) {

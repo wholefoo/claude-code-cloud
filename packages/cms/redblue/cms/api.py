@@ -1,18 +1,18 @@
 """Headless REST API: every collection is readable as typed JSON; writes need an API key or
 session with the right role and always go through the same workflow as the admin UI."""
 
-
 from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
 from redblue.cms import service
 from redblue.cms.collections import COLLECTIONS, get_collection
 from redblue.cms.models import Entry
 from redblue.core.auth import Role, User, require_role
 from redblue.core.context import get_db
-from sqlalchemy.orm import Session
 
 
 class EntryOut(BaseModel):

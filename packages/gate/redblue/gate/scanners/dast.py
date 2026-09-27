@@ -14,6 +14,7 @@ import secrets
 from urllib.parse import urlsplit
 
 import httpx
+
 from redblue.gate.scanners import ScanContext, ScannerUnavailable
 from redblue.gate.schemas import Finding, Severity
 
@@ -31,9 +32,16 @@ TRACE_SIGNS = (
     "psycopg.errors",
 )
 
-PER_SITE_RULES = {"RB-DAST-CSP", "RB-DAST-NOSNIFF", "RB-DAST-REFERRER", "RB-DAST-FRAMING",
-                  "RB-DAST-CSP-WEAK", "RB-DAST-BANNER", "RB-DAST-COOKIE-HTTPONLY",
-                  "RB-DAST-COOKIE-SAMESITE"}
+PER_SITE_RULES = {
+    "RB-DAST-CSP",
+    "RB-DAST-NOSNIFF",
+    "RB-DAST-REFERRER",
+    "RB-DAST-FRAMING",
+    "RB-DAST-CSP-WEAK",
+    "RB-DAST-BANNER",
+    "RB-DAST-COOKIE-HTTPONLY",
+    "RB-DAST-COOKIE-SAMESITE",
+}
 
 HEADER_CHECKS = [
     (
@@ -227,7 +235,7 @@ def _passive(path: str, resp: httpx.Response) -> list[Finding]:
 def _reflection(get, path: str, param: str) -> Finding | None:
     """Output-encoding check with an inert canary. Flags raw `<` or `"` echoed into HTML."""
     token = "rbc" + secrets.token_hex(4)
-    canary = f"{token}<\">"
+    canary = f'{token}<">'
     resp = get(path, {param: canary})
     if resp is None or not _is_html(resp):
         return None

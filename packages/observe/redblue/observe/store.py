@@ -14,10 +14,11 @@ from contextlib import contextmanager
 from datetime import datetime
 from types import TracebackType
 
-from redblue.core.db import Database, utcnow
-from redblue.observe.models import ERROR_STATUSES, Deploy, ErrorEvent, ErrorGroup, RequestMetric
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+from redblue.core.db import Database, utcnow
+from redblue.observe.models import ERROR_STATUSES, Deploy, ErrorEvent, ErrorGroup, RequestMetric
 
 DB = Database | Session
 

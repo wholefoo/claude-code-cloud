@@ -17,7 +17,7 @@ def demo(tmp_path):
 def hardened(tmp_path):
     d = tmp_path / "hardened"
     d.mkdir()
-    (d / "app.py").write_text('''
+    (d / "app.py").write_text("""
 from html import escape
 
 from fastapi import FastAPI
@@ -48,6 +48,6 @@ def search(q: str = ""):
 @app.get("/go")
 def go(next: str = "/"):
     return RedirectResponse(next if next.startswith("/") and not next.startswith("//") else "/")
-''')
+""")
     (d / ".redblue.yml").write_text("app: app:app\nscanners:\n  pip_audit: false\n")
     return d

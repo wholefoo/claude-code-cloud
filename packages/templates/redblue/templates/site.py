@@ -56,8 +56,11 @@ class BlockContext:
             m = self.db.scalar(select(Media).where(Media.key == block["media_key"]))
             if m:
                 return {"src": f"/media/{m.key}", "width": m.width, "height": m.height}
-        return {"src": block.get("src", ""), "width": block.get("width"),
-                "height": block.get("height")}
+        return {
+            "src": block.get("src", ""),
+            "width": block.get("width"),
+            "height": block.get("height"),
+        }
 
     def form(self, block: dict) -> Markup:
         tpl = self.templates.env.get_template("partials/form.html")
@@ -67,29 +70,50 @@ class BlockContext:
 def _site(p: Platform, db: Session, locale: str) -> dict:
     s = p.settings
     nav: list[dict] = []
-    for page in db.scalars(select(Entry).where(Entry.collection == "page",
-                                               Entry.live.is_not(None),
-                                               Entry.locale == locale)
-                           .order_by(Entry.sort_order)):
+    for page in db.scalars(
+        select(Entry)
+        .where(Entry.collection == "page", Entry.live.is_not(None), Entry.locale == locale)
+        .order_by(Entry.sort_order)
+    ):
         if "nav" in (page.live or {}).get("tags", []):
-            nav.append({"label": page.live["title"],
-                        "path": get_collection("page").path_for(page.live_slug, locale,
-                                                                s.default_locale)})
+            nav.append(
+                {
+                    "label": page.live["title"],
+                    "path": get_collection("page").path_for(
+                        page.live_slug, locale, s.default_locale
+                    ),
+                }
+            )
     for c in COLLECTIONS.values():
         path = c.listing_path(locale, s.default_locale)
-        if path and c.name in ("post", "doc", "product", "guide") and db.scalar(
-            select(Entry.id).where(Entry.collection == c.name, Entry.live.is_not(None)).limit(1)
+        if (
+            path
+            and c.name in ("post", "doc", "product", "guide")
+            and db.scalar(
+                select(Entry.id).where(Entry.collection == c.name, Entry.live.is_not(None)).limit(1)
+            )
         ):
             nav.append({"label": c.label if c.name != "post" else "Blog", "path": path})
-    footer = [{"label": e.live["title"], "path": f"/{e.live_slug}"} for e in db.scalars(
-        select(Entry).where(Entry.collection == "page", Entry.live.is_not(None),
-                            Entry.live_slug.in_(("privacy", "terms", "cookies", "about",
-                                                 "contact"))))]
+    footer = [
+        {"label": e.live["title"], "path": f"/{e.live_slug}"}
+        for e in db.scalars(
+            select(Entry).where(
+                Entry.collection == "page",
+                Entry.live.is_not(None),
+                Entry.live_slug.in_(("privacy", "terms", "cookies", "about", "contact")),
+            )
+        )
+    ]
     return {
-        "site_name": s.site_name, "base_url": s.base_url,
-        "organization_name": s.organization_name, "organization_logo": s.organization_logo,
-        "locales": s.locales, "default_locale": s.default_locale, "nav": nav,
-        "footer_links": footer, "year": __import__("datetime").date.today().year,
+        "site_name": s.site_name,
+        "base_url": s.base_url,
+        "organization_name": s.organization_name,
+        "organization_logo": s.organization_logo,
+        "locales": s.locales,
+        "default_locale": s.default_locale,
+        "nav": nav,
+        "footer_links": footer,
+        "year": __import__("datetime").date.today().year,
     }
 
 
@@ -111,8 +135,15 @@ class SiteRenderer:
     def platform(self) -> Platform:
         return self.app.state.rb
 
-    def render(self, request: Request, db: Session, page_type: PageType, page: dict,
-               status_code: int = 200, locale: str | None = None) -> HTMLResponse:
+    def render(
+        self,
+        request: Request,
+        db: Session,
+        page_type: PageType,
+        page: dict,
+        status_code: int = 200,
+        locale: str | None = None,
+    ) -> HTMLResponse:
         p = self.platform
         locale = locale or p.settings.default_locale
         site = _site(p, db, locale)
@@ -128,27 +159,36 @@ class SiteRenderer:
         page.setdefault("locale", locale)
         csrf = getattr(request.state, "csrf_token", "")
         ctx: dict[str, Any] = {
-            "request": request, "site": site, "page": page, "page_type": page_type,
-            "meta": {"title": full_title, "description": description, "canonical": canonical,
-                     "noindex": bool(seo.get("noindex")) or status_code >= 400,
-                     "og_type": "article" if page_type.template.endswith("article.html")
-                     else "website",
-                     "og_image": page.get("og_image") or f"/_rb/og{path.rstrip('/') or '/home'}.svg",
-                     "alternates": page.get("alternates", [])},
-            "csrf_token": csrf, "nonce": getattr(request.state, "csp_nonce", ""),
+            "request": request,
+            "site": site,
+            "page": page,
+            "page_type": page_type,
+            "meta": {
+                "title": full_title,
+                "description": description,
+                "canonical": canonical,
+                "noindex": bool(seo.get("noindex")) or status_code >= 400,
+                "og_type": "article" if page_type.template.endswith("article.html") else "website",
+                "og_image": page.get("og_image") or f"/_rb/og{path.rstrip('/') or '/home'}.svg",
+                "alternates": page.get("alternates", []),
+            },
+            "csrf_token": csrf,
+            "nonce": getattr(request.state, "csp_nonce", ""),
             "ctx": BlockContext(request, db, self.templates, csrf),
             "settings": p.settings,
         }
         for proc in context_processors:
             proc(request, ctx)
         ctx["jsonld"] = page_graph(site, {**page, "description": description})
-        return self.templates.TemplateResponse(request, page_type.template, ctx,
-                                               status_code=status_code)
+        return self.templates.TemplateResponse(
+            request, page_type.template, ctx, status_code=status_code
+        )
 
     # -------------------------------------------------------------- entries
 
-    def entry_page(self, request: Request, db: Session, entry: Entry,
-                   coll: CollectionDef) -> HTMLResponse:
+    def entry_page(
+        self, request: Request, db: Session, entry: Entry, coll: CollectionDef
+    ) -> HTMLResponse:
         live = entry.live or {}
         settings = self.platform.settings
         override = live.get("data", {}).get("page_type") if coll.name == "page" else None
@@ -164,78 +204,141 @@ class SiteRenderer:
             crumbs.append((live.get("title", ""), path))
         blocks = live.get("blocks", [])
         page = {
-            "entry_id": entry.id, "collection": coll.name, "title": live.get("title", ""),
-            "description": live.get("summary", ""), "summary": live.get("summary", ""),
-            "url": path, "blocks": blocks, "data": live.get("data", {}),
-            "seo": live.get("seo", {}), "tags": live.get("tags", []),
-            "category": live.get("category"), "author": _author(db, live.get("author_id")),
+            "entry_id": entry.id,
+            "collection": coll.name,
+            "title": live.get("title", ""),
+            "description": live.get("summary", ""),
+            "summary": live.get("summary", ""),
+            "url": path,
+            "blocks": blocks,
+            "data": live.get("data", {}),
+            "seo": live.get("seo", {}),
+            "tags": live.get("tags", []),
+            "category": live.get("category"),
+            "author": _author(db, live.get("author_id")),
             "published": entry.published_at.date().isoformat() if entry.published_at else None,
-            "modified": (entry.content_updated_at.date().isoformat()
-                         if entry.content_updated_at else None),
-            "published_at": entry.published_at, "modified_at": entry.content_updated_at,
-            "ai_label": live.get("ai_label", False), "crumbs": crumbs, "toc": toc(blocks),
-            "answer": first_answer(blocks), "alternates": self._alternates(db, entry, coll),
+            "modified": (
+                entry.content_updated_at.date().isoformat() if entry.content_updated_at else None
+            ),
+            "published_at": entry.published_at,
+            "modified_at": entry.content_updated_at,
+            "ai_label": live.get("ai_label", False),
+            "crumbs": crumbs,
+            "toc": toc(blocks),
+            "answer": first_answer(blocks),
+            "alternates": self._alternates(db, entry, coll),
         }
         if pt.key == "documentation":
             page["sidebar"] = [
-                {"title": d.live["title"], "url": coll.path_for(d.live_slug, d.locale,
-                                                                 settings.default_locale)}
-                for d in service.live_entries(db, "doc", locale=entry.locale)]
+                {
+                    "title": d.live["title"],
+                    "url": coll.path_for(d.live_slug, d.locale, settings.default_locale),
+                }
+                for d in service.live_entries(db, "doc", locale=entry.locale)
+            ]
         return self.render(request, db, pt, page, locale=entry.locale)
 
     def _alternates(self, db: Session, entry: Entry, coll: CollectionDef) -> list[dict]:
         root = entry.translation_of or entry.id
-        group = list(db.scalars(select(Entry).where(
-            Entry.live.is_not(None),
-            (Entry.id == root) | (Entry.translation_of == root))))
+        group = list(
+            db.scalars(
+                select(Entry).where(
+                    Entry.live.is_not(None), (Entry.id == root) | (Entry.translation_of == root)
+                )
+            )
+        )
         if len(group) < 2:
             return []
         base, default = self.platform.settings.base_url, self.platform.settings.default_locale
-        alts = [{"hreflang": e.locale, "href": base + coll.path_for(e.live_slug, e.locale,
-                                                                   default)} for e in group]
-        alts += [{"hreflang": "x-default", "href": next(
-            (a["href"] for a in alts if a["hreflang"] == default), alts[0]["href"])}]
+        alts = [
+            {"hreflang": e.locale, "href": base + coll.path_for(e.live_slug, e.locale, default)}
+            for e in group
+        ]
+        alts += [
+            {
+                "hreflang": "x-default",
+                "href": next(
+                    (a["href"] for a in alts if a["hreflang"] == default), alts[0]["href"]
+                ),
+            }
+        ]
         return alts
 
-    def listing_page(self, request: Request, db: Session, coll: CollectionDef, locale: str,
-                     *, tag: str | None = None, category: str | None = None,
-                     page_num: int = 1) -> HTMLResponse:
+    def listing_page(
+        self,
+        request: Request,
+        db: Session,
+        coll: CollectionDef,
+        locale: str,
+        *,
+        tag: str | None = None,
+        category: str | None = None,
+        page_num: int = 1,
+    ) -> HTMLResponse:
         pt = listing_type_for(coll.name) or CATALOG["archive"]
         if tag or category:
             pt = CATALOG["archive"]
         settings = self.platform.settings
-        items = service.live_entries(db, coll.name, locale=locale, tag=tag, category=category,
-                                     limit=PAGE_SIZE + 1, offset=(page_num - 1) * PAGE_SIZE)
+        items = service.live_entries(
+            db,
+            coll.name,
+            locale=locale,
+            tag=tag,
+            category=category,
+            limit=PAGE_SIZE + 1,
+            offset=(page_num - 1) * PAGE_SIZE,
+        )
         if page_num > 1 and not items:
             raise HTTPException(404)
         base_path = coll.listing_path(locale, settings.default_locale) or f"/{coll.name}"
         label = coll.label if coll.name != "post" else "Blog"
         title = f"{label}: {tag or category}" if (tag or category) else label
-        path = base_path + (f"/tag/{tag}" if tag else f"/category/{category}" if category
-                            else "")
+        path = base_path + (f"/tag/{tag}" if tag else f"/category/{category}" if category else "")
         page = {
-            "title": title, "description": f"{title} from {settings.site_name}.", "url": path,
+            "title": title,
+            "description": f"{title} from {settings.site_name}.",
+            "url": path,
             "items": [self._card(e, coll, settings.default_locale) for e in items[:PAGE_SIZE]],
-            "page_num": page_num, "has_next": len(items) > PAGE_SIZE, "collection": coll.name,
-            "crumbs": [("Home", "/"), (label, base_path)] + ([(title, path)] if path !=
-                                                              base_path else []),
-            "blocks": [], "letters": sorted({e.live["title"][:1].upper() for e in items}),
+            "page_num": page_num,
+            "has_next": len(items) > PAGE_SIZE,
+            "collection": coll.name,
+            "crumbs": [("Home", "/"), (label, base_path)]
+            + ([(title, path)] if path != base_path else []),
+            "blocks": [],
+            "letters": sorted({e.live["title"][:1].upper() for e in items}),
         }
         if pt.key == "faq":
-            page["blocks"] = [{"type": "faq", "items": [
-                {"question": e.live["title"],
-                 "answer": (first_answer(e.live.get("blocks", [])) or {}).get(
-                     "answer", e.live.get("summary", ""))}
-                for e in items[:PAGE_SIZE]]}] if items else []
+            page["blocks"] = (
+                [
+                    {
+                        "type": "faq",
+                        "items": [
+                            {
+                                "question": e.live["title"],
+                                "answer": (first_answer(e.live.get("blocks", [])) or {}).get(
+                                    "answer", e.live.get("summary", "")
+                                ),
+                            }
+                            for e in items[:PAGE_SIZE]
+                        ],
+                    }
+                ]
+                if items
+                else []
+            )
         return self.render(request, db, pt, page, locale=locale)
 
     @staticmethod
     def _card(e: Entry, coll: CollectionDef, default_locale: str) -> dict:
         live = e.live or {}
-        return {"title": live.get("title", ""), "summary": live.get("summary", ""),
-                "url": coll.path_for(e.live_slug, e.locale, default_locale),
-                "date": e.published_at, "tags": live.get("tags", []),
-                "data": live.get("data", {})}
+        return {
+            "title": live.get("title", ""),
+            "summary": live.get("summary", ""),
+            "url": coll.path_for(e.live_slug, e.locale, default_locale),
+            "date": e.published_at,
+            "tags": live.get("tags", []),
+            "data": live.get("data", {}),
+        }
 
 
 def install_site(app: FastAPI, *, extra_template_dirs=None) -> SiteRenderer:
@@ -253,24 +356,39 @@ def install_site(app: FastAPI, *, extra_template_dirs=None) -> SiteRenderer:
                 r = service.resolve_redirect(db, request.url.path)
                 if r:
                     return RedirectResponse(r.to_path, status_code=r.status_code)
-                return renderer.render(request, db, CATALOG["not_found"], {
-                    "title": "Page not found", "url": request.url.path,
-                    "description": "We couldn't find that page.",
-                    "message": "The page you were looking for doesn't exist or has moved.",
-                }, status_code=404)
+                return renderer.render(
+                    request,
+                    db,
+                    CATALOG["not_found"],
+                    {
+                        "title": "Page not found",
+                        "url": request.url.path,
+                        "description": "We couldn't find that page.",
+                        "message": "The page you were looking for doesn't exist or has moved.",
+                    },
+                    status_code=404,
+                )
         from fastapi.exception_handlers import http_exception_handler
 
         return await http_exception_handler(request, exc)
 
     @app.middleware("http")
     async def maintenance(request: Request, call_next):
-        if (app.state.rb.settings.maintenance_mode and not request.url.path.startswith(
-                ("/admin", "/_rb", "/static"))):
+        if app.state.rb.settings.maintenance_mode and not request.url.path.startswith(
+            ("/admin", "/_rb", "/static")
+        ):
             with app.state.rb.db.session() as db:
-                resp = renderer.render(request, db, CATALOG["maintenance"], {
-                    "title": "Down for maintenance", "url": request.url.path,
-                    "message": "We're making improvements and will be back shortly.",
-                }, status_code=503)
+                resp = renderer.render(
+                    request,
+                    db,
+                    CATALOG["maintenance"],
+                    {
+                        "title": "Down for maintenance",
+                        "url": request.url.path,
+                        "message": "We're making improvements and will be back shortly.",
+                    },
+                    status_code=503,
+                )
             resp.headers["Retry-After"] = "600"
             return resp
         return await call_next(request)
@@ -279,8 +397,10 @@ def install_site(app: FastAPI, *, extra_template_dirs=None) -> SiteRenderer:
 
 
 def _wants_html(request: Request) -> bool:
-    return not request.url.path.startswith(("/api/", "/_rb/")) and "text/html" in \
-        request.headers.get("accept", "text/html")
+    if request.url.path.startswith(("/api/", "/_rb/")):
+        return False
+    accept = request.headers.get("accept", "")
+    return not accept or "text/html" in accept or "*/*" in accept
 
 
 def site_router(r: SiteRenderer) -> APIRouter:
@@ -292,8 +412,9 @@ def site_router(r: SiteRenderer) -> APIRouter:
     @router.get("/_rb/tokens.css")
     def tokens_css(request: Request) -> Response:
         tokens = Tokens(**request.app.state.rb.settings.theme_tokens)
-        return Response(tokens.css(), media_type="text/css",
-                        headers={"Cache-Control": "public, max-age=300"})
+        return Response(
+            tokens.css(), media_type="text/css", headers={"Cache-Control": "public, max-age=300"}
+        )
 
     @router.get("/media/{key}")
     def media(key: str, request: Request) -> Response:
@@ -306,22 +427,34 @@ def site_router(r: SiteRenderer) -> APIRouter:
             data = storage.get(key)
         except (FileNotFoundError, ValueError):
             raise HTTPException(404) from None
-        return Response(data, media_type=m.mime, headers={
-            "Cache-Control": "public, max-age=31536000, immutable",
-            "Content-Disposition": "inline" if m.mime.startswith("image/") else "attachment",
-        })
+        return Response(
+            data,
+            media_type=m.mime,
+            headers={
+                "Cache-Control": "public, max-age=31536000, immutable",
+                "Content-Disposition": "inline" if m.mime.startswith("image/") else "attachment",
+            },
+        )
 
     @router.get("/search")
     def search(request: Request, q: str = "") -> HTMLResponse:
         with db_session(request) as db:
             results = service.search(db, q) if len(q.strip()) >= 2 else []
             default = request.app.state.rb.settings.default_locale
-            items = [SiteRenderer._card(e, get_collection(e.collection), default)
-                     for e in results]
-            return r.render(request, db, CATALOG["search_results"], {
-                "title": f"Search results for “{q}”" if q else "Search", "url": "/search",
-                "query": q, "items": items, "seo": {"noindex": True},
-                "description": "Search this site."})
+            items = [SiteRenderer._card(e, get_collection(e.collection), default) for e in results]
+            return r.render(
+                request,
+                db,
+                CATALOG["search_results"],
+                {
+                    "title": f"Search results for “{q}”" if q else "Search",
+                    "url": "/search",
+                    "query": q,
+                    "items": items,
+                    "seo": {"noindex": True},
+                    "description": "Search this site.",
+                },
+            )
 
     @router.get("/authors/{author_id}")
     def author(author_id: int, request: Request) -> HTMLResponse:
@@ -329,16 +462,28 @@ def site_router(r: SiteRenderer) -> APIRouter:
             a = _author(db, author_id)
             if a is None:
                 raise HTTPException(404)
-            posts = [e for e in service.live_entries(db, None, limit=200)
-                     if (e.live or {}).get("author_id") == author_id]
+            posts = [
+                e
+                for e in service.live_entries(db, None, limit=200)
+                if (e.live or {}).get("author_id") == author_id
+            ]
             default = request.app.state.rb.settings.default_locale
-            return r.render(request, db, CATALOG["author"], {
-                "title": a["name"], "url": f"/authors/{author_id}", "author": a,
-                "description": a["bio"][:160] or f"Articles by {a['name']}.",
-                "items": [SiteRenderer._card(e, get_collection(e.collection), default)
-                          for e in posts],
-                "schema_type": "ProfilePage",
-                "crumbs": [("Home", "/"), (a["name"], f"/authors/{author_id}")]})
+            return r.render(
+                request,
+                db,
+                CATALOG["author"],
+                {
+                    "title": a["name"],
+                    "url": f"/authors/{author_id}",
+                    "author": a,
+                    "description": a["bio"][:160] or f"Articles by {a['name']}.",
+                    "items": [
+                        SiteRenderer._card(e, get_collection(e.collection), default) for e in posts
+                    ],
+                    "schema_type": "ProfilePage",
+                    "crumbs": [("Home", "/"), (a["name"], f"/authors/{author_id}")],
+                },
+            )
 
     @router.get("/")
     def home(request: Request) -> HTMLResponse:
@@ -357,8 +502,7 @@ def site_router(r: SiteRenderer) -> APIRouter:
             if not parts:
                 e = service.live_entry(db, "page", "home", locale)
                 if e is None:
-                    return r.render(request, db, CATALOG["home"], _welcome(settings),
-                                    locale=locale)
+                    return r.render(request, db, CATALOG["home"], _welcome(settings), locale=locale)
                 return r.entry_page(request, db, e, get_collection("page"))
             prefix = "/" + parts[0]
             coll = next((c for c in COLLECTIONS.values() if c.url_prefix == prefix), None)
@@ -392,14 +536,24 @@ def _page_param(request: Request) -> int:
 
 def _welcome(settings) -> dict:
     return {
-        "title": settings.site_name, "url": "/",
-        "description": "A new site built with RedBlue.", "summary":
-        "Your site is running. Sign in to the admin to create your home page.",
+        "title": settings.site_name,
+        "url": "/",
+        "description": "A new site built with RedBlue.",
+        "summary": "Your site is running. Sign in to the admin to create your home page.",
         "blocks": [
-            {"type": "answer", "question": "What is this site?",
-             "answer": "A fresh RedBlue site. Create a page with the slug “home” in the "
-                       "admin to replace this welcome screen."},
-            {"type": "cta", "heading": "Get started", "text": "Open the admin to add content.",
-             "button_label": "Open admin", "button_url": "/admin"},
-        ], "crumbs": [],
+            {
+                "type": "answer",
+                "question": "What is this site?",
+                "answer": "A fresh RedBlue site. Create a page with the slug “home” in the "
+                "admin to replace this welcome screen.",
+            },
+            {
+                "type": "cta",
+                "heading": "Get started",
+                "text": "Open the admin to add content.",
+                "button_label": "Open admin",
+                "button_url": "/admin",
+            },
+        ],
+        "crumbs": [],
     }

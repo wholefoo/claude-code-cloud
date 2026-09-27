@@ -9,9 +9,9 @@
   </li>
 {% endfor %}
 </ul>
-{% if page.page_num > 1 or page.has_next %}
+{% if (page.page_num or 1) > 1 or page.has_next %}
 <nav class="rb-pager" aria-label="Pagination">
-  {% if page.page_num > 1 %}<a rel="prev" href="?page={{ page.page_num - 1 }}">← Newer</a>{% endif %}
+  {% if (page.page_num or 1) > 1 %}<a rel="prev" href="?page={{ page.page_num - 1 }}">← Newer</a>{% endif %}
   {% if page.has_next %}<a rel="next" href="?page={{ page.page_num + 1 }}">Older →</a>{% endif %}
 </nav>
 {% endif %}

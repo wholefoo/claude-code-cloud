@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pytest
+
 from redblue.core.ai import AgentCall
 from redblue.core.db import utcnow
 from redblue.observe import metrics

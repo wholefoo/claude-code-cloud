@@ -5,11 +5,12 @@ import json
 import logging
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+
 from redblue.observe import store
 from redblue.observe.logging import JSONFormatter, RequestIdFilter, request_id_var
 from redblue.observe.middleware import accept_request_id
 from redblue.observe.models import ErrorEvent, ErrorGroup, RequestMetric
-from sqlalchemy import select
 
 
 def _metrics(db) -> list[RequestMetric]:

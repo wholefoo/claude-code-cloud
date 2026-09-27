@@ -19,6 +19,7 @@ from pathlib import Path
 
 import httpx
 from pydantic import BaseModel, Field
+
 from redblue.gate.config import GateConfig
 from redblue.gate.llm import LLM, untrusted
 from redblue.gate.schemas import FileChange, Finding, FixProposal, RegressionTest
@@ -241,7 +242,9 @@ def fix_sqli(repo: Path, f: Finding) -> FixProposal | None:
     new = _replace_line(src, f.line, lambda s: s.replace(m.group(0), new_call))
     if new is None:
         return None
-    test = _static_test(f, """
+    test = _static_test(
+        f,
+        """
         for node in ast.walk(tree):
             if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
                     and node.func.attr == "execute" and node.args):
@@ -251,12 +254,18 @@ def fix_sqli(repo: Path, f: Finding) -> FixProposal | None:
                     sql = node.args[0].value
                     assert not any(seg.count("?") for seg in sql.split("'")[1::2]), (
                         "placeholder inside a quoted literal is not bound")
-    """)
-    return FixProposal(finding_id=f.id, fingerprint=f.fingerprint, rule_id=f.rule_id,
-                       summary=f"Parameterise SQL query in {f.file}",
-                       rationale="Interpolating input into SQL allows injection; bound "
-                                 "parameters keep data separate from the query.",
-                       files=[FileChange(path=f.file, new_content=new)], regression_test=test)
+    """,
+    )
+    return FixProposal(
+        finding_id=f.id,
+        fingerprint=f.fingerprint,
+        rule_id=f.rule_id,
+        summary=f"Parameterise SQL query in {f.file}",
+        rationale="Interpolating input into SQL allows injection; bound "
+        "parameters keep data separate from the query.",
+        files=[FileChange(path=f.file, new_content=new)],
+        regression_test=test,
+    )
 
 
 @fixer("RB-JINJA-SAFE")

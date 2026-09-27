@@ -1,0 +1,17 @@
+{% extends "admin/base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block anon %}
+<div class="rb-narrow rb-login">
+  <h1>Sign in</h1>
+  {% if flash %}<p class="rb-flash" role="status">{{ flash }}</p>{% endif %}
+  {% if error %}<p class="rb-error" role="alert">{{ error }}</p>{% endif %}
+  <form class="rb-form" method="post" action="/admin/login">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="next" value="{{ next }}">
+    <label>Email <input name="email" type="email" autocomplete="username" required></label>
+    <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+    <button class="rb-btn rb-btn--primary" type="submit">Sign in</button>
+  </form>
+  {% for p in providers %}<p><a class="rb-btn" href="/admin/oauth/{{ p }}/start">Continue with {{ p | title }}</a></p>{% endfor %}
+</div>
+{% endblock %}

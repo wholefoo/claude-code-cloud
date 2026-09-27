@@ -17,9 +17,10 @@ from datetime import datetime, timedelta
 from typing import TypeVar
 
 from pydantic import BaseModel
-from redblue.core.db import Base, Database, utcnow
 from sqlalchemy import DateTime, Float, Integer, String, func, select
 from sqlalchemy.orm import Mapped, mapped_column
+
+from redblue.core.db import Base, Database, utcnow
 
 log = logging.getLogger("redblue.ai")
 T = TypeVar("T", bound=BaseModel)
@@ -147,8 +148,13 @@ class AIClient:
     @staticmethod
     def _system(system: str) -> list[dict]:
         # Cache breakpoint on the stable prefix (system prompt + repo/site summaries).
-        return [{"type": "text", "text": f"{system}\n\n{UNTRUSTED_NOTICE}",
-                 "cache_control": {"type": "ephemeral"}}]
+        return [
+            {
+                "type": "text",
+                "text": f"{system}\n\n{UNTRUSTED_NOTICE}",
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
 
     @staticmethod
     def _request_extras(model: str) -> dict:

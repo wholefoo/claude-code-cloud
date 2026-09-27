@@ -33,10 +33,19 @@ class PageType:
 CATALOG: dict[str, PageType] = {}
 
 
-def _add(key, name, category, template, schema="WebPage", collection=None, listing_of=None,
-         description=""):
-    CATALOG[key] = PageType(key, name, category, f"pages/{template}.html", schema, collection,
-                            listing_of, description)
+def _add(
+    key,
+    name,
+    category,
+    template,
+    schema="WebPage",
+    collection=None,
+    listing_of=None,
+    description="",
+):
+    CATALOG[key] = PageType(
+        key, name, category, f"pages/{template}.html", schema, collection, listing_of, description
+    )
 
 
 # Core & marketing
@@ -57,29 +66,49 @@ _add("blog_index", "Blog index", "content", "listing", "Blog", listing_of="post"
 _add("blog_post", "Blog post", "content", "article", "BlogPosting", "post")
 _add("archive", "Category / tag archive", "content", "listing", "CollectionPage")
 _add("author", "Author profile", "content", "author", "ProfilePage")
-_add("newsletter_archive", "Newsletter archive", "content", "listing", "CollectionPage",
-     listing_of="newsletter")
+_add(
+    "newsletter_archive",
+    "Newsletter archive",
+    "content",
+    "listing",
+    "CollectionPage",
+    listing_of="newsletter",
+)
 _add("series", "Series / collection page", "content", "listing", "CollectionPage")
 # Answer & knowledge (AEO)
 _add("faq", "FAQ", "answer", "listing", "FAQPage", listing_of="question")
-_add("knowledge_base", "Knowledge base / help center", "answer", "listing", "CollectionPage",
-     listing_of="doc")
+_add(
+    "knowledge_base",
+    "Knowledge base / help center",
+    "answer",
+    "listing",
+    "CollectionPage",
+    listing_of="doc",
+)
 _add("documentation", "Documentation", "answer", "docs", "TechArticle", "doc")
-_add("glossary_index", "Glossary index", "answer", "glossary_index", "DefinedTermSet",
-     listing_of="glossary")
+_add(
+    "glossary_index",
+    "Glossary index",
+    "answer",
+    "glossary_index",
+    "DefinedTermSet",
+    listing_of="glossary",
+)
 _add("glossary_term", "Glossary term", "answer", "article", "DefinedTerm", "glossary")
 _add("howto", "How-to / tutorial", "answer", "article", "HowTo", "guide")
 _add("qa_article", "Q&A article", "answer", "article", "QAPage", "question")
 # Commercial & comparison
 _add("product", "Product page", "commercial", "product", "Product", "product")
-_add("product_listing", "Product listing", "commercial", "listing", "ItemList",
-     listing_of="product")
-_add("comparison", "\"X vs Y\" comparison", "commercial", "article", "Article", "comparison")
-_add("alternatives", "\"Alternatives to X\"", "commercial", "article", "Article", "alternative")
+_add(
+    "product_listing", "Product listing", "commercial", "listing", "ItemList", listing_of="product"
+)
+_add("comparison", '"X vs Y" comparison', "commercial", "article", "Article", "comparison")
+_add("alternatives", '"Alternatives to X"', "commercial", "article", "Article", "alternative")
 _add("use_case", "Use-case page", "commercial", "article", "WebPage", "use_case")
 _add("industry", "Industry / solution page", "commercial", "article", "WebPage", "industry")
-_add("integration", "Integration page", "commercial", "article", "SoftwareApplication",
-     "integration")
+_add(
+    "integration", "Integration page", "commercial", "article", "SoftwareApplication", "integration"
+)
 _add("case_study", "Case study", "commercial", "article", "Article", "case_study")
 _add("testimonials", "Testimonials / reviews", "commercial", "landing", "WebPage", "page")
 # Lead generation
@@ -92,10 +121,8 @@ _add("quiz", "Quiz / assessment", "lead", "tool", "WebPage", "page")
 # Local & programmatic
 _add("location", "Location page", "local", "location", "LocalBusiness", "location")
 _add("service_area", "Service-area page", "local", "location", "Service", "service_area")
-_add("directory_listing", "Directory listing", "local", "location", "LocalBusiness",
-     "directory")
-_add("directory_index", "Directory index", "local", "listing", "ItemList",
-     listing_of="directory")
+_add("directory_listing", "Directory listing", "local", "location", "LocalBusiness", "directory")
+_add("directory_index", "Directory index", "local", "listing", "ItemList", listing_of="directory")
 # Company & trust
 _add("careers", "Careers", "company", "listing", "CollectionPage", listing_of="job")
 _add("job_posting", "Job posting", "company", "job", "JobPosting", "job")
@@ -117,9 +144,13 @@ _add("account", "Account / dashboard shell", "utility", "account", "WebPage")
 _add("login", "Login / signup", "utility", "login", "WebPage")
 
 CATEGORIES = {
-    "core": "Core & marketing", "content": "Content & editorial",
-    "answer": "Answer & knowledge (AEO)", "commercial": "Commercial & comparison",
-    "lead": "Lead generation", "local": "Local & programmatic", "company": "Company & trust",
+    "core": "Core & marketing",
+    "content": "Content & editorial",
+    "answer": "Answer & knowledge (AEO)",
+    "commercial": "Commercial & comparison",
+    "lead": "Lead generation",
+    "local": "Local & programmatic",
+    "company": "Company & trust",
     "utility": "Utility",
 }
 

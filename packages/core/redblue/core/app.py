@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import FastAPI
+
 from redblue.core.ai import AIClient
 from redblue.core.config import Settings
 from redblue.core.context import Platform
