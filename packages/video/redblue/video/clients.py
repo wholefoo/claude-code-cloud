@@ -671,6 +671,171 @@ class LinkedIn:
         return urn
 
 
+class XClient:
+    """X API v2: chunked media upload, then (separately, on a person's click) a post.
+    OAuth 2.0 user context; X refresh tokens are single-use, so every refresh hands the new
+    one to ``on_rotate`` straight away."""
+
+    TOKEN_URL = "https://api.x.com/2/oauth2/token"  # noqa: S105  # nosec B105
+    API = "https://api.x.com/2"
+    CHUNK = 4 * 2**20  # X accepts segments under 5 MB
+
+    def __init__(
+        self,
+        credentials: tuple[str, str, str] | None,
+        client: httpx.Client | None = None,
+        on_rotate=None,
+    ):
+        if not credentials:
+            raise MissingKey(
+                "Set X_CLIENT_ID, X_REFRESH_TOKEN and RB_VIDEO_X_TOKEN_FILE to post on X."
+            )
+        self.credentials, self.http, self.on_rotate = credentials, _client(client), on_rotate
+        self._token: str | None = None
+
+    def _auth(self) -> dict:
+        if self._token is None:
+            client_id, secret, refresh = self.credentials
+            r = self.http.post(
+                self.TOKEN_URL,
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": refresh,
+                    "client_id": client_id,
+                },
+                auth=(client_id, secret) if secret else None,
+            )
+            body = r.json() if r.content else {}
+            if r.status_code >= 400 or "access_token" not in body:
+                raise PlatformError(
+                    f"X login failed: {body.get('error_description') or r.status_code}"
+                )
+            self._token = body["access_token"]
+            if body.get("refresh_token") and self.on_rotate:
+                self.on_rotate(body["refresh_token"])  # the old one no longer works
+        return {"Authorization": f"Bearer {self._token}"}
+
+    def _json(self, r: httpx.Response) -> dict:
+        body = r.json() if r.content else {}
+        if r.status_code >= 400 or (body.get("errors") and not body.get("data")):
+            errors = body.get("errors") or [{}]
+            detail = body.get("detail") or errors[0].get("message") or r.status_code
+            raise PlatformError(f"X: {detail}")
+        return body
+
+    def upload(self, path) -> tuple[str, str]:
+        """Returns (media_id, processing state)."""
+        data = path.read_bytes()
+        r = self.http.post(
+            f"{self.API}/media/upload/initialize",
+            headers=self._auth(),
+            json={
+                "media_type": "video/mp4",
+                "total_bytes": len(data),
+                "media_category": "tweet_video",
+            },
+        )
+        media_id = str((self._json(r).get("data") or {}).get("id", ""))
+        if not re.fullmatch(r"\d{1,30}", media_id):
+            raise PlatformError("X didn't return a media id.")
+        for i in range(0, max(1, -(-len(data) // self.CHUNK))):
+            r = self.http.post(
+                f"{self.API}/media/upload/{media_id}/append",
+                headers=self._auth(),
+                data={"segment_index": str(i)},
+                files={"media": ("blob", data[i * self.CHUNK : (i + 1) * self.CHUNK])},
+                timeout=httpx.Timeout(600.0, connect=10.0),
+            )
+            self._json(r)
+        r = self.http.post(f"{self.API}/media/upload/{media_id}/finalize", headers=self._auth())
+        info = (self._json(r).get("data") or {}).get("processing_info") or {}
+        return media_id, info.get("state", "succeeded")
+
+    def media_state(self, media_id: str) -> tuple[str, str]:
+        """(state, error message) of an uploaded video's processing."""
+        r = self.http.get(
+            f"{self.API}/media/upload",
+            headers=self._auth(),
+            params={"media_id": media_id, "command": "STATUS"},
+        )
+        info = (self._json(r).get("data") or {}).get("processing_info") or {}
+        error = (info.get("error") or {}).get("message", "")
+        return info.get("state", "succeeded"), error
+
+    def post(self, text: str, media_id: str) -> str:
+        r = self.http.post(
+            f"{self.API}/tweets",
+            headers=self._auth(),
+            json={"text": text, "media": {"media_ids": [media_id]}},
+        )
+        post_id = str((self._json(r).get("data") or {}).get("id", ""))
+        if not re.fullmatch(r"\d{1,30}", post_id):
+            raise PlatformError("X didn't return the post id.")
+        return post_id
+
+
+class Threads:
+    """Threads API video posts: a container that Meta fills by fetching ``video_url`` (a
+    short-lived signed link to the render), then ``threads_publish`` on a person's click."""
+
+    BASE = "https://graph.threads.net/v1.0"
+
+    def __init__(self, credentials: tuple[str, str] | None, client: httpx.Client | None = None):
+        if not credentials:
+            raise MissingKey("Set THREADS_ACCESS_TOKEN and THREADS_USER_ID to post on Threads.")
+        self.token, self.user_id = credentials
+        if not re.fullmatch(r"\d{1,30}", self.user_id):
+            raise ValueError("THREADS_USER_ID must be the numeric Threads user id.")
+        self.http = _client(client)
+
+    @property
+    def _auth(self) -> dict:
+        return {"Authorization": f"Bearer {self.token}"}
+
+    def _json(self, r: httpx.Response) -> dict:
+        body = r.json() if r.content else {}
+        if r.status_code >= 400 or "error" in body:
+            err = body.get("error") or {}
+            raise PlatformError(f"Threads: {err.get('message') or r.status_code}")
+        return body
+
+    def create_video(self, video_url: str, text: str) -> str:
+        r = self.http.post(
+            f"{self.BASE}/{self.user_id}/threads",
+            headers=self._auth,
+            data={"media_type": "VIDEO", "video_url": video_url, "text": text},
+        )
+        cid = str(self._json(r).get("id", ""))
+        if not re.fullmatch(r"\d{1,40}", cid):
+            raise PlatformError("Threads didn't return a container id.")
+        return cid
+
+    def status(self, container_id: str) -> dict:
+        r = self.http.get(
+            f"{self.BASE}/{container_id}",
+            headers=self._auth,
+            params={"fields": "status,error_message"},
+        )
+        return self._json(r)
+
+    def publish(self, container_id: str) -> str:
+        r = self.http.post(
+            f"{self.BASE}/{self.user_id}/threads_publish",
+            headers=self._auth,
+            data={"creation_id": container_id},
+        )
+        mid = str(self._json(r).get("id", ""))
+        if not mid:
+            raise PlatformError("Threads didn't return a post id.")
+        return mid
+
+    def permalink(self, media_id: str) -> str | None:
+        r = self.http.get(
+            f"{self.BASE}/{media_id}", headers=self._auth, params={"fields": "permalink"}
+        )
+        return self._json(r).get("permalink")
+
+
 def _int(value) -> int | None:
     try:
         return int(value) if value is not None and value != "" else None

@@ -14,7 +14,7 @@ Trends
 ```
 
 "You upload" means by hand, or with the optional upload buttons for YouTube, TikTok,
-Instagram, Facebook and LinkedIn, which a person presses for each video.
+Instagram, Facebook, LinkedIn, X and Threads, which a person presses for each video.
 
 ## Quickstart
 
@@ -50,6 +50,8 @@ That's useful for testing, and you add keys as you go.
 | `INSTAGRAM_ACCESS_TOKEN` + `INSTAGRAM_USER_ID` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Upload an approved render as a Reel, then publish it with a second click | You upload it yourself |
 | `FACEBOOK_PAGE_ACCESS_TOKEN` + `FACEBOOK_PAGE_ID` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Upload an approved render as a Page Reel (a draft by default) | You upload it yourself |
 | `LINKEDIN_ACCESS_TOKEN` + `LINKEDIN_AUTHOR_URN` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Upload an approved render, then post it with a second click | You upload it yourself |
+| `X_CLIENT_ID` (+ `X_CLIENT_SECRET`) + `X_REFRESH_TOKEN` + `RB_VIDEO_X_TOKEN_FILE` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Upload an approved render, then post it with a second click (X charges per post) | You upload it yourself |
+| `THREADS_ACCESS_TOKEN` + `THREADS_USER_ID` + a public https site address (+ `RB_VIDEO_UPLOAD_ENABLED`) | Send an approved render to Threads, then post it with a second click | You upload it yourself |
 
 Settings (`RB_VIDEO_*`): `NICHE`, `KEYWORDS` (JSON list), `REGION`, `SUBREDDITS` (JSON list),
 `GOOGLE_TRENDS_GEO`, `REDDIT_USER_AGENT`, `OUTPUT_DIR`, `TARGET_SECONDS`, `TEMPLATE`
@@ -60,7 +62,8 @@ Settings (`RB_VIDEO_*`): `NICHE`, `KEYWORDS` (JSON list), `REGION`, `SUBREDDITS`
 (default false), `UPLOAD_CATEGORY_ID` (default 28, Science & Technology), `TIKTOK_MODE`
 (`inbox` or `direct`), `TIKTOK_USERNAME`, `TIKTOK_TOKEN_FILE`, `INSTAGRAM_GRAPH_HOST`
 (`graph.facebook.com` or `graph.instagram.com`), `INSTAGRAM_API_VERSION` (default `v25.0`),
-`FACEBOOK_API_VERSION` (default `v25.0`), `LINKEDIN_VERSION` (default `202606`).
+`FACEBOOK_API_VERSION` (default `v25.0`), `LINKEDIN_VERSION` (default `202606`),
+`X_TOKEN_FILE`, `X_MAX_CHARS` (default 280), `PUBLIC_BASE_URL` (default: `RB_BASE_URL`).
 
 ### How sources are compared
 
@@ -84,11 +87,12 @@ about something else (say, football scores) ranks below a smaller trend in your 
 - **Licensing.** Every asset records its provider, license and attribution. The generated
   upload description lists sources, credits and an AI-assistance note.
 - **Human in the loop.** Renders wait in review; approval only marks them ready for *you*
-  to upload. Optional direct upload to YouTube, TikTok, Instagram, Facebook and LinkedIn
-  exists, but it's off by default and every upload is a person pressing a button (or
-  confirming in the CLI): no job, sweep or pipeline step ever uploads or publishes. YouTube
-  uploads are private unless the person chooses otherwise, TikTok and Facebook go to drafts
-  by default, and Instagram and LinkedIn need a second click to publish.
+  to upload. Optional direct upload to YouTube, TikTok, Instagram, Facebook, LinkedIn, X
+  and Threads exists, but it's off by default and every upload is a person pressing a
+  button (or confirming in the CLI): no job, sweep or pipeline step ever uploads or
+  publishes. YouTube uploads are private unless the person chooses otherwise, TikTok and
+  Facebook go to drafts by default, and Instagram, LinkedIn, X and Threads need a second
+  click to publish.
 
 ## Rendering
 
@@ -358,3 +362,58 @@ export LINKEDIN_AUTHOR_URN=urn:li:person:SUB_FROM_USERINFO   # or urn:li:organiz
 
 LinkedIn retires API versions after about a year. If you see a version error, set
 `RB_VIDEO_LINKEDIN_VERSION` to a recent month (YYYYMM).
+
+## Upload to X (optional)
+
+Two steps, each a person's click:
+
+1. **Upload video (not posted yet)** sends the render in chunks with the post text you
+   entered (`redblue video x 12 -f 16:9`).
+2. When X has processed it, **Post to X** with its confirmation creates the post
+   (`redblue video x-publish UPLOAD_ID`). The link is recorded, so tracking starts.
+
+The default text is the title, up to three hashtags and "(AI-assisted)", trimmed to fit 280
+characters (`RB_VIDEO_X_MAX_CHARS` if your account allows longer posts). Video length and
+size limits depend on the account. **X charges for API posts:** new developer accounts are on
+pay-per-use (about $0.015 per post at the time of writing), so check your console.
+
+**Setup.** In the X developer console, create an app with OAuth 2.0 (type "Web App" makes it
+a confidential client with a secret), and request the scopes `tweet.read tweet.write
+users.read media.write offline.access`. Authorize your account once with the OAuth 2.0
+authorization-code (PKCE) flow and keep the refresh token. **X refresh tokens are
+single-use:** each refresh returns a new one and the old one stops working, so RedBlue
+requires a token file where it keeps the current one (mode 600):
+
+```bash
+export X_CLIENT_ID=... X_CLIENT_SECRET=...     # secret only for confidential clients
+export X_REFRESH_TOKEN=...                     # seeds the token file once
+export RB_VIDEO_X_TOKEN_FILE=/var/lib/redblue/x.token
+```
+
+If the file is lost or two RedBlue processes refresh at the same moment, authorize again
+and put the new refresh token in the file.
+
+## Upload to Threads (optional)
+
+The Threads API can't take a file upload; Meta fetches the video from a URL. So step 1 gives
+Threads a **signed link to this site** (`/video-media/…`) that serves only that approved
+render and expires after an hour, and your RedBlue site must be reachable at a public https
+address (`RB_VIDEO_PUBLIC_BASE_URL`, default `RB_BASE_URL`). The panel says so if it isn't.
+
+1. **Send to Threads (not posted yet)** creates the post container
+   (`redblue video threads 12 -f 9:16`).
+2. When Threads has processed it, **Post to Threads** with its confirmation publishes it
+   (`redblue video threads-publish UPLOAD_ID`). The permalink is recorded.
+
+Post text is limited to 500 characters; videos up to 5 minutes. Unpublished containers
+expire after 24 hours. Threads allows 250 API posts per profile per day.
+
+**Setup.** In a Meta developer app, add the **Threads** use case with the `threads_basic` and
+`threads_content_publish` permissions, add your Threads profile as a tester, and generate a
+token. Exchange it for a long-lived token (60 days; refresh it before then).
+
+```bash
+export THREADS_ACCESS_TOKEN=...
+export THREADS_USER_ID=...          # numeric; from GET https://graph.threads.net/v1.0/me
+export RB_VIDEO_PUBLIC_BASE_URL=https://your-site.example   # if RB_BASE_URL isn't public
+```

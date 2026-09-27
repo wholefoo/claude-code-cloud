@@ -47,6 +47,12 @@ class VideoSettings(BaseSettings):
     instagram_api_version: str = "v25.0"
     facebook_api_version: str = "v25.0"
     linkedin_version: str = "202606"  # LinkedIn-Version header (YYYYMM)
+    # X refresh tokens are single-use: the current one lives in this file (mode 600).
+    x_token_file: Path | None = None
+    x_max_chars: int = 280  # raise it if the account has a longer post limit
+    # Public https address of this RedBlue site, used for Threads' short-lived video links.
+    # Defaults to the platform's RB_BASE_URL.
+    public_base_url: str = ""
 
     tavily_api_key: SecretStr | None = Field(default=None, alias="TAVILY_API_KEY")
     firecrawl_api_key: SecretStr | None = Field(default=None, alias="FIRECRAWL_API_KEY")
@@ -74,6 +80,11 @@ class VideoSettings(BaseSettings):
     facebook_page_id: str | None = Field(default=None, alias="FACEBOOK_PAGE_ID")
     linkedin_access_token: SecretStr | None = Field(default=None, alias="LINKEDIN_ACCESS_TOKEN")
     linkedin_author_urn: str | None = Field(default=None, alias="LINKEDIN_AUTHOR_URN")
+    x_client_id: str | None = Field(default=None, alias="X_CLIENT_ID")
+    x_client_secret: SecretStr | None = Field(default=None, alias="X_CLIENT_SECRET")
+    x_refresh_token: SecretStr | None = Field(default=None, alias="X_REFRESH_TOKEN")
+    threads_access_token: SecretStr | None = Field(default=None, alias="THREADS_ACCESS_TOKEN")
+    threads_user_id: str | None = Field(default=None, alias="THREADS_USER_ID")
     # Separate token for uploads (scope youtube.upload), same OAuth client.
     youtube_upload_refresh_token: SecretStr | None = Field(
         default=None, alias="YOUTUBE_UPLOAD_REFRESH_TOKEN"
@@ -140,6 +151,28 @@ class VideoSettings(BaseSettings):
     def linkedin_credentials(self) -> tuple[str, str] | None:
         if self.linkedin_access_token and self.linkedin_author_urn:
             return self.linkedin_access_token.get_secret_value(), self.linkedin_author_urn
+        return None
+
+    @property
+    def x_credentials(self) -> tuple[str, str, str] | None:
+        """(client id, client secret or "", refresh token). Needs the token file: X refresh
+        tokens are single-use, so the environment value only seeds the file once."""
+        if not (self.x_client_id and self.x_token_file):
+            return None
+        refresh = ""
+        if self.x_token_file.is_file():
+            refresh = self.x_token_file.read_text(encoding="utf-8").strip()
+        if not refresh and self.x_refresh_token:
+            refresh = self.x_refresh_token.get_secret_value()
+        if not refresh:
+            return None
+        secret = self.x_client_secret.get_secret_value() if self.x_client_secret else ""
+        return self.x_client_id, secret, refresh
+
+    @property
+    def threads_credentials(self) -> tuple[str, str] | None:
+        if self.threads_access_token and self.threads_user_id:
+            return self.threads_access_token.get_secret_value(), self.threads_user_id
         return None
 
     def key(self, name: str) -> str | None:

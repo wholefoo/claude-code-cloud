@@ -173,6 +173,34 @@
     <p class="rb-muted">Step 1 uploads it for processing. You choose who sees it and post it in a separate step below.</p>
   {% endif %}
   </section>
+  <section class="rb-card"><h2>Upload to X</h2>
+  {% if not social.x %}
+    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code>, the X credentials and <code>RB_VIDEO_X_TOKEN_FILE</code> (see the video README), or upload the download yourself.</p>
+  {% else %}
+    <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/x"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if loop.first %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
+      <label>Post text <textarea name="text" rows="3" maxlength="{{ x_max_chars }}">{{ social_defaults.x_text }}</textarea></label>
+      <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> I watched this render, checked its facts and have the rights to everything in it</label>
+      <button class="rb-btn rb-btn--primary">Upload video (not posted yet)</button>
+    </form>
+    <p class="rb-muted">Step 1 uploads it for processing; you post it in a separate step below. X charges per post on its pay-per-use plan.</p>
+  {% endif %}
+  </section>
+  <section class="rb-card"><h2>Upload to Threads</h2>
+  {% if not social.threads %}
+    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code> and the Threads credentials (see the video README), or upload the download yourself.</p>
+  {% elif threads_problem %}
+    <p class="rb-muted">{{ threads_problem }} Threads fetches the video from this site through a signed link that expires in an hour.</p>
+  {% else %}
+    <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/threads"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if r.key == "9:16" %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
+      <label>Post text <textarea name="text" rows="3" maxlength="500">{{ social_defaults.threads_text }}</textarea></label>
+      <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> I watched this render, checked its facts and have the rights to everything in it</label>
+      <button class="rb-btn rb-btn--primary">Send to Threads (not posted yet)</button>
+    </form>
+    <p class="rb-muted">Threads fetches the video through a signed link that expires in an hour. You post it in a separate step below.</p>
+  {% endif %}
+  </section>
   {% endif %}
   {% if social_uploads %}
   <section class="rb-card"><h2>Uploads</h2>
@@ -191,6 +219,11 @@
       <form class="rb-form" method="post" action="/admin/video/uploads/{{ up.id }}/publish"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> Make this Reel public on Instagram now</label>
         <button class="rb-btn rb-btn--primary">Publish to Instagram</button></form>
+      {% endif %}
+      {% if up.platform in ("x", "threads") and up.status in ("processing", "ready") and user.has_role(Role.editor) %}
+      <form class="rb-form" method="post" action="/admin/video/uploads/{{ up.id }}/publish"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> Post this publicly on {{ "X" if up.platform == "x" else "Threads" }} now</label>
+        <button class="rb-btn rb-btn--primary">Post to {{ "X" if up.platform == "x" else "Threads" }}</button></form>
       {% endif %}
       {% if up.platform == "linkedin" and up.status in ("processing", "ready") and user.has_role(Role.editor) %}
       <form class="rb-form" method="post" action="/admin/video/uploads/{{ up.id }}/publish"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
