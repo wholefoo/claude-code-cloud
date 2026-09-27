@@ -30,6 +30,7 @@
     <li><a href="/admin/redirects" {% if p.startswith("/admin/redirects") %}aria-current="page"{% endif %}>Redirects</a></li>
     <li><a href="/admin/growth" {% if p.startswith("/admin/growth") %}aria-current="page"{% endif %}>Growth</a></li>
     <li><a href="/admin/experiments" {% if p.startswith("/admin/experiments") %}aria-current="page"{% endif %}>Experiments</a></li>
+    {% if request.app.state.rb.extras.get("video") %}<li><a href="/admin/video" {% if p.startswith("/admin/video") %}aria-current="page"{% endif %}>Video</a></li>{% endif %}
     {% if user.has_role(Role.editor) %}
     <li><a href="/admin/audience" {% if p.startswith("/admin/audience") %}aria-current="page"{% endif %}>Audience</a></li>
     <li><a href="/admin/observe" {% if p.startswith("/admin/observe") %}aria-current="page"{% endif %}>Observability</a></li>

@@ -12,7 +12,7 @@ python3 -m venv /srv/redblue/venv
 /srv/redblue/venv/bin/pip install --upgrade pip
 /srv/redblue/venv/bin/pip install "$SRC/packages/core[postgres,ai]" "$SRC/packages/cms" \
   "$SRC/packages/templates" "$SRC/packages/growth" "$SRC/packages/observe" "$SRC/packages/gate" \
-  "$SRC/packages/builder" "$SRC/admin" "$SRC/packages/platform" "$SRC/packages/cli"
+  "$SRC/packages/builder" "$SRC/admin" "$SRC/packages/platform" "$SRC/packages/video" "$SRC/packages/cli"
 if ! sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='redblue'" | grep -q 1; then
   DBPASS="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
   sudo -u postgres psql -c "CREATE ROLE redblue LOGIN PASSWORD '$DBPASS'"

@@ -51,6 +51,7 @@ the agent name.
 | Growth / Repurposing | `redblue.growth.agent` | weekly report, recommendations, social/email drafts |
 | Ops | `redblue.observe.ops` | anomaly explanations, builder tasks |
 | Red / Blue | `redblue.gate` | findings + triage; fix proposals with regression tests, PRs |
+| Video | `redblue.video` | scored trends, cited briefs and scripts, renders awaiting human review |
 
 All model calls go through `AIClient.structured()` (or the gate's standalone `LLM`), which
 validates against Pydantic models, fences untrusted input, applies prompt caching, enforces

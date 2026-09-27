@@ -16,6 +16,8 @@ known-first-party = ["redblue"]
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S", "B"]
 "evals/**" = ["S"]
+# ASS subtitle headers are a fixed-width file format.
+"packages/video/redblue/video/render.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["packages", "admin", "evals"]

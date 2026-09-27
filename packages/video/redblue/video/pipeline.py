@@ -1,0 +1,248 @@
+"""Pipeline orchestration: sweep → pick → brief → script → assets → render → human review.
+
+Every stage degrades gracefully without API keys (so the loop can be tried end to end), and
+every stage records what it did on the project. Nothing is ever published automatically:
+approval only marks a render as ready for a human to upload."""
+
+from __future__ import annotations
+
+import logging
+import re
+from pathlib import Path
+
+import httpx
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from redblue.core.context import Platform
+from redblue.core.db import utcnow
+from redblue.video import clients
+from redblue.video.config import VideoSettings
+from redblue.video.models import Trend, VideoProject
+from redblue.video.render import BeatMedia, render
+from redblue.video.schemas import Asset, Brief, Script, Source, TrendSignal
+from redblue.video.scoring import score_all
+from redblue.video.writing import make_brief, make_script
+
+log = logging.getLogger("redblue.video")
+
+
+class Pipeline:
+    def __init__(
+        self, platform: Platform, settings: VideoSettings, http: httpx.Client | None = None
+    ):
+        self.platform, self.s, self.http = platform, settings, http
+
+    @property
+    def model(self) -> str:
+        return self.platform.settings.models.content
+
+    # ------------------------------------------------------------------ 1. sweep
+
+    def sweep(self, db: Session) -> list[Trend]:
+        signals: list[TrendSignal] = []
+        notes = []
+        for name, fn in (("youtube", self._youtube), ("tavily", self._tavily)):
+            try:
+                signals += fn()
+            except clients.MissingKey as exc:
+                notes.append(str(exc))
+            except httpx.HTTPError as exc:
+                notes.append(f"{name} failed: {exc}")
+        for n in notes:
+            log.info("sweep: %s", n)
+        seen = {t for (t,) in db.execute(select(Trend.url).where(Trend.url.is_not(None)))}
+        added = []
+        for sig, score, parts in score_all(signals, self.s.niche, self.s.keywords):
+            if sig.url and sig.url in seen:
+                continue
+            t = Trend(
+                source=sig.source,
+                title=sig.title,
+                topic=_topic(sig.title),
+                url=sig.url,
+                signal=sig.model_dump(mode="json"),
+                score=score,
+                breakdown=parts,
+            )
+            db.add(t)
+            added.append(t)
+        db.flush()
+        return added
+
+    def _youtube(self) -> list[TrendSignal]:
+        yt = clients.YouTubeTrends(self.s.key("youtube"), self.http)
+        return yt.search(self.s.niche) + yt.most_popular(self.s.region, limit=15)
+
+    def _tavily(self) -> list[TrendSignal]:
+        return clients.Tavily(self.s.key("tavily"), self.http).trend_signals(self.s.niche)
+
+    # ------------------------------------------------------------------ 2. project + brief
+
+    def start_project(
+        self, db: Session, *, trend: Trend | None = None, topic: str | None = None
+    ) -> VideoProject:
+        if trend is not None:
+            trend.status = "picked"
+        p = VideoProject(
+            trend_id=trend.id if trend else None,
+            topic=(topic or (trend.topic if trend else "")).strip()[:300],
+        )
+        if not p.topic:
+            raise ValueError("A project needs a trend or a topic.")
+        db.add(p)
+        db.flush()
+        return p
+
+    def research(self, db: Session, p: VideoProject) -> Brief:
+        sources = self._sources(p.topic)
+        brief = make_brief(p.topic, sources, self.platform.ai, self.model)
+        p.brief, p.status = brief.model_dump(mode="json"), "script"
+        return brief
+
+    def _sources(self, topic: str) -> list[Source]:
+        try:
+            sources = clients.Tavily(self.s.key("tavily"), self.http).sources(topic)
+        except (clients.MissingKey, httpx.HTTPError) as exc:
+            log.info("research: %s", exc)
+            return []
+        try:
+            fc = clients.Firecrawl(self.s.key("firecrawl"), self.http)
+        except clients.MissingKey:
+            return sources
+        for s in sources[:3]:  # deepen the top sources with full-page extraction
+            try:
+                text = fc.scrape(s.url)
+                if len(text) > len(s.content):
+                    s.content = text[:12000]
+            except (httpx.HTTPError, ValueError) as exc:
+                log.info("firecrawl %s: %s", s.url, exc)
+        return sources
+
+    # ------------------------------------------------------------------ 3. script
+
+    def write_script(self, db: Session, p: VideoProject) -> Script:
+        brief = Brief.model_validate(p.brief)
+        script = make_script(brief, self.platform.ai, self.model, self.s.target_seconds)
+        self.save_script(p, script)
+        return script
+
+    def save_script(self, p: VideoProject, script: Script) -> list[str]:
+        problems = script.validate_against(Brief.model_validate(p.brief))
+        p.script, p.problems = script.model_dump(mode="json"), problems
+        p.status = "script"
+        return problems
+
+    # ------------------------------------------------------------------ 4+5. assets + render
+
+    def produce(self, db: Session, p: VideoProject) -> Path:
+        script = Script.model_validate(p.script)
+        if p.problems:
+            raise ValueError("Fix the script problems before rendering: " + "; ".join(p.problems))
+        workdir = (self.s.output_dir / f"project-{p.id}").resolve()
+        workdir.mkdir(parents=True, exist_ok=True)
+        media, assets = self._assets(script, workdir)
+        p.status = "rendering"
+        out = render(
+            script, media, workdir / f"video-{p.id}.mp4", width=self.s.width, height=self.s.height
+        )
+        p.assets = [a.model_dump(mode="json") for a in assets]
+        p.render_path, p.status = str(out), "review"
+        return out
+
+    def _assets(self, script: Script, workdir: Path) -> tuple[list[BeatMedia], list[Asset]]:
+        media, assets = [], []
+        try:
+            pexels = clients.Pexels(self.s.key("pexels"), self.http)
+        except clients.MissingKey:
+            pexels = None
+        try:
+            tts = clients.ElevenLabs(self.s.key("elevenlabs"), self.s.voice_id, self.http)
+        except clients.MissingKey:
+            tts = None
+        for i, beat in enumerate(script.beats):
+            m = BeatMedia()
+            if pexels:
+                try:
+                    hit = pexels.find(beat.visual_query)
+                    if hit:
+                        dest = workdir / f"clip-{i:02d}.mp4"
+                        pexels.download(hit["url"], dest)
+                        m.clip = dest
+                        assets.append(
+                            Asset(
+                                kind="video",
+                                path=str(dest),
+                                provider="pexels",
+                                license="Pexels License",
+                                source_url=hit["page"],
+                                attribution=f"Video by {hit['author']} on Pexels",
+                            )
+                        )
+                except (httpx.HTTPError, ValueError) as exc:
+                    log.info("pexels beat %s: %s", i, exc)
+            if tts:
+                try:
+                    dest = workdir / f"voice-{i:02d}.mp3"
+                    tts.speak(beat.narration, dest)
+                    m.narration = dest
+                    assets.append(
+                        Asset(
+                            kind="audio",
+                            path=str(dest),
+                            provider="elevenlabs",
+                            license="ElevenLabs terms (AI voice)",
+                            attribution="AI-generated narration",
+                        )
+                    )
+                except httpx.HTTPError as exc:
+                    log.info("tts beat %s: %s", i, exc)
+            media.append(m)
+        return media, assets
+
+    # ------------------------------------------------------------------ 6. review
+
+    def review(self, p: VideoProject, user_id: int, approve: bool, note: str = "") -> None:
+        if p.status != "review":
+            raise ValueError("Only rendered videos can be reviewed.")
+        p.status = "approved" if approve else "rejected"
+        p.review_note, p.reviewed_by = note[:2000], user_id
+
+    def run(self, db: Session, p: VideoProject) -> VideoProject:
+        """Brief → script → render in one go (stops at script problems for a human)."""
+        if not p.brief:
+            self.research(db, p)
+        if not p.script:
+            self.write_script(db, p)
+        if not p.problems:
+            try:
+                self.produce(db, p)
+            except Exception as exc:
+                p.status, p.problems = "failed", [f"Render failed: {exc}"[:500]]
+                raise
+        p.updated_at = utcnow()
+        return p
+
+
+def description(p: VideoProject) -> str:
+    """Upload description with sources and asset credits (for the human who publishes)."""
+    script = Script.model_validate(p.script) if p.script else None
+    brief = Brief.model_validate(p.brief) if p.brief else None
+    lines = [script.title if script else p.topic, ""]
+    if brief and brief.sources:
+        lines.append("Sources:")
+        lines += [f"[{i}] {s.title}: {s.url}" for i, s in enumerate(brief.sources)]
+        lines.append("")
+    credits = [a["attribution"] for a in p.assets if a.get("attribution")]
+    if credits:
+        lines.append("Credits: " + "; ".join(dict.fromkeys(credits)))
+    if p.ai_generated:
+        lines.append("Made with AI assistance (script, voice) and reviewed by a human.")
+    if script and script.hashtags:
+        lines.append(" ".join("#" + h.lstrip("#") for h in script.hashtags))
+    return "\n".join(lines)
+
+
+def _topic(title: str) -> str:
+    title = re.sub(r"\s*[|\-–—:]\s*[^|\-–—:]{0,40}$", "", title)  # drop "| Channel" suffixes
+    return re.sub(r"[#@]\w+", "", title).strip()[:300] or title[:300]

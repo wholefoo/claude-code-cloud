@@ -15,6 +15,8 @@ build_app = typer.Typer(help="Builder agent.", no_args_is_help=True)
 growth_app = typer.Typer(help="Growth engine.", no_args_is_help=True)
 app.add_typer(build_app, name="build")
 app.add_typer(growth_app, name="growth")
+video_app = typer.Typer(help="Trending video pipeline (needs redblue-video).", no_args_is_help=True)
+app.add_typer(video_app, name="video")
 
 
 def _settings():
@@ -301,6 +303,53 @@ def growth_audit():
     )
     for i in report.issues:
         typer.echo(f"  {i.severity:8} {i.path:40} {i.check}: {i.message}")
+
+
+# ---------------------------------------------------------------- video
+
+
+def _video():
+    from redblue.video.config import get_video_settings
+    from redblue.video.pipeline import Pipeline
+
+    return Pipeline(_platform(), get_video_settings())
+
+
+@video_app.command("sweep")
+def video_sweep(limit: int = 15):
+    """Fetch and score trends (YouTube Data API + Tavily)."""
+    pipe = _video()
+    with pipe.platform.db.session() as s:
+        added = pipe.sweep(s)
+        for t in sorted(added, key=lambda t: -t.score)[:limit]:
+            typer.echo(f"  #{t.id:<5} {t.score:5.1f}  [{t.source}] {t.title[:80]}")
+    typer.echo(f"{len(added)} new trend(s). Make one with: redblue video make --trend ID")
+
+
+@video_app.command("make")
+def video_make(
+    topic: str = typer.Option("", help="Topic to research"),
+    trend: int = typer.Option(0, help="Trend id from `redblue video sweep`"),
+):
+    """Research, script and render a video, then stop for human review in the admin."""
+    from redblue.video.models import Trend
+
+    pipe = _video()
+    with pipe.platform.db.session() as s:
+        t = s.get(Trend, trend) if trend else None
+        p = pipe.start_project(s, trend=t, topic=topic or None)
+        try:
+            pipe.run(s, p)
+        except Exception as exc:  # noqa: BLE001
+            typer.secho(f"Render failed: {exc}", fg="red")
+        if p.problems:
+            typer.secho("Fix in the admin before rendering:", fg="yellow")
+            for x in p.problems:
+                typer.echo(f"  - {x}")
+        typer.echo(
+            f"Project #{p.id}: {p.status}" + (f" -> {p.render_path}" if p.render_path else "")
+        )
+        typer.echo(f"Review at {pipe.platform.settings.base_url}/admin/video/projects/{p.id}")
 
 
 if __name__ == "__main__":

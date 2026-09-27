@@ -37,6 +37,12 @@ def create_app(
     app.include_router(cms_api_router())
     install_growth(app)
     install_admin(app)
+    try:  # optional: redblue-video
+        from redblue.video.admin import install_video
+    except ImportError:
+        pass
+    else:
+        install_video(app)
     # The public site owns the catch-all route, so it is installed last.
     install_site(app, extra_template_dirs=template_dirs)
     return app

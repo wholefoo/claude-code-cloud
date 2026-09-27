@@ -15,6 +15,7 @@ most of the work, and humans approve anything public.
 | **Security gate** | Red agent scans code and a preview it launches; Blue agent writes verified fixes | `redblue.gate` |
 | **Observability** | Request metrics, error grouping, uptime, OTel export, ops agent explains regressions | `redblue.observe` |
 | **Growth engine** | SEO, AEO/GEO (`llms.txt`, answer blocks, AI crawler controls), cookieless analytics, A/B tests, newsletter | `redblue.growth` |
+| **Video** | Trend sweep → cited brief → script → licensed assets → FFmpeg render → human review | `redblue.video` |
 | **Admin** | FastAPI + HTMX admin for all of the above | `redblue.admin` |
 
 See [`docs/PLAN.md`](docs/PLAN.md) for the full plan and roadmap, and
@@ -102,6 +103,7 @@ packages/cms         CMS + headless API      packages/observe   Metrics, errors,
 packages/templates   Page types + site       packages/builder   Builder agent + project template
 packages/gate        Red/Blue security gate  packages/platform  Assembled app + seed
 packages/cli         `redblue` command       admin/             Admin UI (FastAPI + HTMX)
+packages/video       Trending video pipeline
 action/              GitHub Action           deploy/            Compose, systemd, platform configs
 examples/            vulnerable-demo, starter-site               evals/  Agent evals
 ```
