@@ -104,9 +104,8 @@ def test_favicon_only_embeds_safe_values(client):
 
     svg = favicon_svg('"><script>alert(1)</script>', "#123456", "#ffffff")
     assert "<script" not in svg and ">S</text>" in svg
-    assert ">R</text>" in favicon_svg(
-        "ümlaut-only ☃", "#123", "#fff"
-    ) or ">M</text>" in favicon_svg("ümlaut-only ☃", "#123", "#fff")
+    assert ">M</text>" in favicon_svg("ümlaut", "#123", "#fff")  # first ASCII letter
+    assert ">R</text>" in favicon_svg("☃ ✓", "#123", "#fff")  # fallback
     with pytest.raises(ValueError):
         favicon_svg("x", 'red" onload="alert(1)', "#fff")
     r = client.get("/_rb/favicon.svg")
