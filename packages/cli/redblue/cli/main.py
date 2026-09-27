@@ -1163,5 +1163,64 @@ def video_tumblr(
         typer.echo(f"Tumblr post #{up.external_ref} ({up.mode}) {up.url or ''}")
 
 
+@video_app.command("vimeo")
+def video_vimeo(
+    project: int = typer.Argument(..., help="Approved project id"),
+    fmt: str = typer.Option("16:9", "--format", "-f", help="Which render to upload"),
+    privacy: str = typer.Option("nobody", help="nobody (only me, default), unlisted, anybody"),
+):
+    """Upload an approved render to Vimeo (only you can watch it unless you choose otherwise)."""
+    import getpass
+
+    import httpx
+
+    from redblue.video import upload_social as social
+    from redblue.video.models import VideoProject
+    from redblue.video.pipeline import description
+
+    pipe = _video()
+    _need_person()
+    with pipe.platform.db.session() as s:
+        p = s.get(VideoProject, project)
+        if p is None:
+            raise typer.BadParameter(f"No project #{project}")
+        try:
+            req = social.VimeoRequest(
+                format=fmt,
+                title=social.defaults(p)["title"][:128],
+                description=description(p)[:5000] if p.script else "",
+                privacy=privacy,
+            )
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from None
+        confirmed = typer.confirm(
+            f"I watched this render and have the rights to it. Upload ({req.privacy})?"
+        )
+        public_ok = req.privacy == "nobody" or typer.confirm(
+            "Other people will be able to watch it. Continue?"
+        )
+        if not (confirmed and public_ok):
+            raise typer.Abort()
+        try:
+            up = social.upload_vimeo(
+                s,
+                p,
+                req,
+                pipe.s,
+                confirmed_by=f"cli:{getpass.getuser()}",
+                confirmed=confirmed,
+                confirmed_public=public_ok,
+            )
+        except (
+            ValueError,
+            social.UploadDisabled,
+            social.clients.PlatformError,
+            httpx.HTTPError,
+        ) as exc:
+            typer.secho(f"Upload failed: {exc}", fg="red")
+            raise typer.Exit(1) from None
+        typer.echo(f"Uploaded to Vimeo ({up.privacy}): {up.meta.get('link')}")
+
+
 if __name__ == "__main__":
     app()

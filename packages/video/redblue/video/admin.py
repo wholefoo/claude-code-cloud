@@ -565,6 +565,43 @@ def upload_tumblr(
     return back(dest, messages[up.mode])
 
 
+@router.post("/projects/{pid:int}/vimeo")
+def upload_vimeo(
+    pid: int,
+    db: DB,
+    user: Writer,
+    format: Annotated[str, Form()] = "16:9",
+    title: Annotated[str, Form()] = "",
+    description: Annotated[str, Form()] = "",
+    privacy: Annotated[str, Form()] = "nobody",
+    confirm: Annotated[str, Form()] = "",
+    confirm_public: Annotated[str, Form()] = "",
+):
+    need(user, Role.editor)
+    p = _project(db, pid)
+    dest = f"/admin/video/projects/{pid}"
+    try:
+        req = social.VimeoRequest(
+            format=format, title=title, description=description, privacy=privacy
+        )
+        social.upload_vimeo(
+            db,
+            p,
+            req,
+            get_video_settings(),
+            confirmed_by=user.email,
+            confirmed=_flag(confirm),
+            confirmed_public=_flag(confirm_public),
+        )
+    except ValidationError as exc:
+        return back(dest, f"Check the Vimeo form: {exc.errors()[0]['msg']}"[:300])
+    except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
+        return back(dest, f"Vimeo upload failed: {exc}"[:300])
+    except httpx.HTTPError as exc:
+        return back(dest, f"Vimeo upload failed: {exc}"[:300])
+    return back(dest, "Uploaded to Vimeo; it's transcoding. Check status in a minute.")
+
+
 @router.post("/projects/{pid:int}/pinterest")
 def upload_pinterest(
     pid: int,

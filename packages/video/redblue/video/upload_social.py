@@ -25,6 +25,8 @@ the CLI), only approved projects, and the global ``RB_VIDEO_UPLOAD_ENABLED`` swi
 - **Bluesky:** step 1 uploads to Bluesky's video service; step 2 is a separate click.
 - **Tumblr:** one request creates the post with the video, as a draft by default (publish
   it from Tumblr), private, or published right away with a second confirmation.
+- **Vimeo:** one upload with the privacy chosen up front: only me (default), anyone with
+  the link, or anyone (both need a second confirmation).
 - **Threads:** step 1 lets Threads fetch the render from a signed link valid for one hour
   (it needs this site's public https address); step 2 is a separate click that posts it.
 
@@ -73,6 +75,7 @@ NAMES = {
     "reddit": "Reddit",
     "bluesky": "Bluesky",
     "tumblr": "Tumblr",
+    "vimeo": "Vimeo",
 }
 
 
@@ -95,6 +98,9 @@ PRIVACY_LABELS = {
     "PUBLIC": "Anyone",
     "CONNECTIONS": "Connections",
     "board": "On your board",
+    "nobody": "Only me",
+    "unlisted": "Anyone with the link",
+    "anybody": "Anyone",
 }
 
 
@@ -113,6 +119,7 @@ def available(s: VideoSettings) -> dict[str, bool]:
         ),
         "bluesky": s.upload_enabled and s.bluesky_credentials is not None,
         "tumblr": s.upload_enabled and s.tumblr_credentials is not None and bool(s.tumblr_blog),
+        "vimeo": s.upload_enabled and s.vimeo_access_token is not None,
         "pinterest": (
             s.upload_enabled and s.pinterest_credentials is not None and bool(s.pinterest_board_id)
         ),
@@ -298,6 +305,18 @@ class TumblrRequest(BaseModel):
         items = v.split(",") if isinstance(v, str) else list(v or [])
         tags = [str(t).strip().lstrip("#")[:140] for t in items]
         return list(dict.fromkeys(t for t in tags if t))[:30]
+
+
+class VimeoRequest(BaseModel):
+    format: str = "16:9"
+    title: str = Field(default="", max_length=128)
+    description: str = Field(default="", max_length=5000)
+    privacy: Literal["nobody", "unlisted", "anybody"] = "nobody"
+
+    @field_validator("format")
+    @classmethod
+    def _format(cls, v: str) -> str:
+        return get_format(v).key
 
 
 class ThreadsRequest(BaseModel):
@@ -645,6 +664,19 @@ def refresh(db: Session, up: Upload, s: VideoSettings, http: httpx.Client | None
         if tumblr_client(s, http).post_state(up.external_ref) == "published":
             up.status = "published"
             _record(db, up, tumblr_post_url(s, up.external_ref))
+    elif up.platform == "vimeo":
+        st = vimeo_client(s, http).status(up.external_ref)
+        transcode = (st.get("transcode") or {}).get("status", "")
+        view = (st.get("privacy") or {}).get("view", "")
+        if transcode == "error":
+            up.status, up.error = "failed", "Vimeo couldn't transcode the video"
+        elif transcode == "complete":
+            up.privacy = view or up.privacy
+            if view in ("anybody", "unlisted"):
+                up.status = "published"
+                _record(db, up, str(st.get("link") or up.meta.get("link", "")))
+            else:
+                up.status = "draft"  # only visible to the owner until they change it
     elif up.platform == "threads" and up.external_ref:
         data = threads_client(s, http).status(up.external_ref)
         code = data.get("status", "")
@@ -1335,4 +1367,53 @@ def upload_tumblr(
     if req.state == "published":
         _record(db, up, tumblr_post_url(s, post_id))
     log.info("tumblr %s post %s for project %s by %s", req.state, post_id, p.id, confirmed_by)
+    return up
+
+
+# ---------------------------------------------------------------------- Vimeo
+
+
+def vimeo_client(s: VideoSettings, http: httpx.Client | None = None) -> clients.Vimeo:
+    token = s.vimeo_access_token.get_secret_value() if s.vimeo_access_token else None
+    return clients.Vimeo(token, http)
+
+
+def upload_vimeo(
+    db: Session,
+    p: VideoProject,
+    req: VimeoRequest,
+    s: VideoSettings,
+    *,
+    confirmed_by: str,
+    confirmed: bool,
+    confirmed_public: bool = False,
+    http: httpx.Client | None = None,
+) -> Upload:
+    """Upload to Vimeo with the privacy the person chose (only me by default). Anyone with
+    the link, or anyone, needs a second confirmation."""
+    path = _guard(db, p, s, "vimeo", req.format, confirmed_by, confirmed)
+    if req.privacy != "nobody" and not confirmed_public:
+        raise ValueError("Confirm that other people will be able to watch it on Vimeo.")
+    script = Script.model_validate(p.script) if p.script else None
+    video_id, link = vimeo_client(s, http).upload(
+        path,
+        name=req.title or (script.title if script else p.topic)[:128],
+        description=req.description,
+        privacy=req.privacy,
+    )
+    up = Upload(
+        project_id=p.id,
+        platform="vimeo",
+        format=req.format,
+        mode=req.privacy,
+        status="processing",
+        external_ref=video_id,
+        privacy=req.privacy,
+        uploaded_by=confirmed_by[:200],
+        published_by=confirmed_by[:200] if req.privacy != "nobody" else None,
+        meta={"link": link},
+    )
+    db.add(up)
+    db.flush()
+    log.info("vimeo video %s (%s) for project %s by %s", video_id, req.privacy, p.id, confirmed_by)
     return up
