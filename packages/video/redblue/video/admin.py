@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Annotated
 
+import httpx
 from fastapi import APIRouter, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import ValidationError
@@ -16,6 +17,7 @@ from redblue.admin.app import HERE as ADMIN_DIR
 from redblue.core.auth import Role
 from redblue.templates.env import make_templates
 from redblue.video import performance
+from redblue.video import upload as uploads
 from redblue.video.config import get_video_settings
 from redblue.video.models import MetricSnapshot, Publication, Trend, VideoProject
 from redblue.video.pipeline import Pipeline, description
@@ -112,6 +114,7 @@ def create(
 @router.get("/projects/{pid:int}")
 def project(pid: int, request: Request, db: DB, user: Writer) -> HTMLResponse:
     p = _project(db, pid)
+    vs = get_video_settings()
     tpl, fmts = _pipeline(request).look(p)
     renders = [
         {
@@ -137,6 +140,11 @@ def project(pid: int, request: Request, db: DB, user: Writer) -> HTMLResponse:
         renders=renders,
         publications=_publications(db, pid),
         platforms=list(performance.PLATFORMS),
+        upload_enabled=uploads.enabled(vs),
+        upload_defaults=uploads.defaults(p, vs) if p.status == "approved" else {},
+        uploaded={
+            r["key"] for r in renders if uploads.already_uploaded(db, p, r["key"]) is not None
+        },
     )
 
 
@@ -209,6 +217,55 @@ def _publication(db, pub_id: int) -> Publication:
     if pub is None:
         raise HTTPException(404)
     return pub
+
+
+@router.post("/projects/{pid:int}/upload")
+def upload_video(
+    pid: int,
+    db: DB,
+    user: Writer,
+    format: Annotated[str, Form()],
+    title: Annotated[str, Form()],
+    made_for_kids: Annotated[str, Form()] = "",
+    description: Annotated[str, Form()] = "",
+    tags: Annotated[str, Form()] = "",
+    privacy: Annotated[str, Form()] = "private",
+    synthetic_media: Annotated[str, Form()] = "",
+    confirm: Annotated[str, Form()] = "",
+    confirm_public: Annotated[str, Form()] = "",
+):
+    """A person presses Upload: the only way a video leaves RedBlue from the admin."""
+    need(user, Role.editor)
+    p = _project(db, pid)
+    dest = f"/admin/video/projects/{pid}"
+    if made_for_kids not in ("yes", "no"):
+        return back(dest, 'Answer "Made for kids?" before uploading.')
+    vs = get_video_settings()
+    try:
+        req = uploads.UploadRequest(
+            format=format,
+            title=title,
+            description=description,
+            tags=tags,
+            privacy=privacy,
+            made_for_kids=made_for_kids == "yes",
+            synthetic_media=bool(synthetic_media),
+            category_id=vs.upload_category_id,
+        )
+        pub = uploads.upload(
+            db,
+            p,
+            req,
+            vs,
+            confirmed_by=user.email,
+            confirmed=bool(confirm),
+            confirmed_public=bool(confirm_public),
+        )
+    except ValidationError as exc:
+        return back(dest, f"Check the upload form: {exc.errors()[0]['msg']}"[:300])
+    except (ValueError, uploads.UploadDisabled, httpx.HTTPError) as exc:
+        return back(dest, f"Upload failed: {exc}"[:300])
+    return back(dest, f"Uploaded to YouTube as {pub.privacy}: {pub.url}")
 
 
 @router.post("/publications/{pub_id:int}/metrics")

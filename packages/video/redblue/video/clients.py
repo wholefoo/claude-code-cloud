@@ -214,6 +214,54 @@ class YouTubeAnalytics:
         return out
 
 
+class YouTubeUploader:
+    """YouTube Data API resumable upload (scope ``youtube.upload``). Only called from
+    :func:`redblue.video.upload.upload`, which requires a person's confirmation."""
+
+    INIT_URL = "https://www.googleapis.com/upload/youtube/v3/videos"
+
+    def __init__(self, oauth: tuple[str, str, str] | None, client: httpx.Client | None = None):
+        if not oauth:
+            raise MissingKey(
+                "Set YOUTUBE_OAUTH_CLIENT_ID, YOUTUBE_OAUTH_CLIENT_SECRET and "
+                "YOUTUBE_UPLOAD_REFRESH_TOKEN to upload to YouTube."
+            )
+        self.token = YouTubeAnalytics(oauth, client)  # same Google OAuth refresh flow
+        self.http = self.token.http
+
+    def upload(self, path, resource: dict) -> dict:
+        size = path.stat().st_size
+        r = self.http.post(
+            self.INIT_URL,
+            params={"uploadType": "resumable", "part": "snippet,status"},
+            headers={
+                **self.token._auth(),
+                "X-Upload-Content-Length": str(size),
+                "X-Upload-Content-Type": "video/mp4",
+            },
+            json=resource,
+        )
+        r.raise_for_status()
+        session = r.headers.get("location", "")
+        parts = urlsplit(session)
+        if parts.scheme != "https" or not (
+            parts.hostname == "www.googleapis.com"
+            or (parts.hostname or "").endswith(".googleapis.com")
+        ):
+            raise ValueError("YouTube returned an unexpected upload URL.")
+        r = self.http.put(
+            session,
+            headers={**self.token._auth(), "Content-Type": "video/mp4"},
+            content=path.read_bytes(),
+            timeout=httpx.Timeout(600.0, connect=10.0),
+        )
+        r.raise_for_status()
+        body = r.json()
+        if not isinstance(body.get("id"), str):
+            raise ValueError("YouTube didn't return a video id.")
+        return body
+
+
 def _int(value) -> int | None:
     try:
         return int(value) if value is not None and value != "" else None

@@ -63,6 +63,9 @@ class Publication(Base):
     format: Mapped[str | None] = mapped_column(String(10), nullable=True)  # "9:16"
     published_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    # Set only for direct uploads: who confirmed it, and the visibility they chose.
+    uploaded_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    privacy: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
 
 class MetricSnapshot(Base):
