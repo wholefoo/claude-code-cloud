@@ -267,6 +267,7 @@ def upload_video(
     synthetic_media: Annotated[str, Form()] = "",
     confirm: Annotated[str, Form()] = "",
     confirm_public: Annotated[str, Form()] = "",
+    shorts: Annotated[str, Form()] = "",
 ):
     """A person presses Upload: the only way a video leaves RedBlue from the admin."""
     need(user, Role.editor)
@@ -285,6 +286,7 @@ def upload_video(
             made_for_kids=made_for_kids == "yes",
             synthetic_media=bool(synthetic_media),
             category_id=vs.upload_category_id,
+            shorts=bool(shorts),
         )
         pub = uploads.upload(
             db,
@@ -521,6 +523,46 @@ def upload_bluesky(
     return back(
         dest, "Uploaded to Bluesky (not posted yet). When it's processed, press Post below."
     )
+
+
+@router.post("/projects/{pid:int}/tumblr")
+def upload_tumblr(
+    pid: int,
+    db: DB,
+    user: Writer,
+    format: Annotated[str, Form()] = "9:16",
+    caption: Annotated[str, Form()] = "",
+    tags: Annotated[str, Form()] = "",
+    state: Annotated[str, Form()] = "draft",
+    confirm: Annotated[str, Form()] = "",
+    confirm_public: Annotated[str, Form()] = "",
+):
+    need(user, Role.editor)
+    p = _project(db, pid)
+    dest = f"/admin/video/projects/{pid}"
+    try:
+        req = social.TumblrRequest(format=format, caption=caption, tags=tags, state=state)
+        up = social.upload_tumblr(
+            db,
+            p,
+            req,
+            get_video_settings(),
+            confirmed_by=user.email,
+            confirmed=_flag(confirm),
+            confirmed_public=_flag(confirm_public),
+        )
+    except ValidationError as exc:
+        return back(dest, f"Check the Tumblr form: {exc.errors()[0]['msg']}"[:300])
+    except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
+        return back(dest, f"Tumblr upload failed: {exc}"[:300])
+    except httpx.HTTPError as exc:
+        return back(dest, f"Tumblr upload failed: {exc}"[:300])
+    messages = {
+        "draft": "Saved as a Tumblr draft. Publish it from your Tumblr drafts.",
+        "private": "Posted privately on Tumblr (only you can see it).",
+        "published": f"Published on Tumblr: {up.url or ''}",
+    }
+    return back(dest, messages[up.mode])
 
 
 @router.post("/projects/{pid:int}/pinterest")

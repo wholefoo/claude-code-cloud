@@ -50,6 +50,7 @@ class UploadRequest(BaseModel):
     made_for_kids: bool  # no default: a person must answer
     synthetic_media: bool = True
     category_id: str = "28"
+    shorts: bool = False  # a YouTube Short: vertical or square, up to 3 minutes
 
     @field_validator("format")
     @classmethod
@@ -100,6 +101,26 @@ class UploadRequest(BaseModel):
                 "containsSyntheticMedia": self.synthetic_media,
             },
         }
+
+
+SHORTS_MAX_SECONDS = 180
+
+
+def as_short(req: UploadRequest, path: Path) -> UploadRequest:
+    """Check a render qualifies as a YouTube Short and add the #Shorts tag. YouTube treats
+    vertical or square uploads of up to three minutes as Shorts; the tag makes it explicit."""
+    from redblue.video.render import media_duration
+
+    if get_format(req.format).orientation == "landscape":
+        raise ValueError(f"A {req.format} render can't be a Short; pick 9:16, 4:5 or 1:1.")
+    seconds = media_duration(path) or 0
+    if seconds > SHORTS_MAX_SECONDS:
+        raise ValueError(f"Shorts are up to 3 minutes; this render is {seconds:.0f} s.")
+    if "#shorts" in f"{req.title} {req.description}".lower():
+        return req
+    if len(req.title) + len(" #Shorts") <= 100:
+        return req.model_copy(update={"title": f"{req.title} #Shorts"})
+    return req.model_copy(update={"description": f"#Shorts\n\n{req.description}"[:4900]})
 
 
 def enabled(s: VideoSettings) -> bool:
@@ -167,6 +188,8 @@ def upload(
     if already_uploaded(db, p, req.format):
         raise ValueError(f"The {req.format} render was already uploaded to YouTube.")
     path = render_file(p, req.format, s)
+    if req.shorts:
+        req = as_short(req, path)
 
     body = clients.YouTubeUploader(s.youtube_upload_oauth, http).upload(path, req.resource())
     video_id = body["id"]

@@ -4,6 +4,7 @@ nothing here downloads other creators' videos."""
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
@@ -1175,6 +1176,103 @@ def hashtag_facets(text: str) -> list[dict]:
             }
         )
     return facets
+
+
+class Tumblr:
+    """Tumblr API v2 (NPF): one multipart request creates the post and uploads the video.
+    The post state (draft / private / published) is chosen by the person. OAuth2 refresh
+    returns a new refresh token each time, handed to ``on_rotate``."""
+
+    API = "https://api.tumblr.com/v2"
+    USER_AGENT = "redblue-video/0.1 (self-hosted)"
+
+    def __init__(
+        self,
+        credentials: tuple[str, str, str] | None,
+        blog: str | None,
+        client: httpx.Client | None = None,
+        on_rotate=None,
+    ):
+        if not credentials or not blog:
+            raise MissingKey(
+                "Set TUMBLR_CLIENT_ID, TUMBLR_CLIENT_SECRET, TUMBLR_REFRESH_TOKEN and "
+                "RB_VIDEO_TUMBLR_BLOG to post on Tumblr."
+            )
+        if not re.fullmatch(r"(t:[A-Za-z0-9_-]{8,40}|[A-Za-z0-9][A-Za-z0-9.-]{0,99})", blog):
+            raise ValueError("RB_VIDEO_TUMBLR_BLOG looks like a blog name (e.g. myblog).")
+        self.credentials, self.blog = credentials, blog
+        self.http, self.on_rotate = _client(client), on_rotate
+        self._token: str | None = None
+
+    def _auth(self) -> dict:
+        if self._token is None:
+            client_id, secret, refresh = self.credentials
+            r = self.http.post(
+                f"{self.API}/oauth2/token",
+                headers={"User-Agent": self.USER_AGENT},
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": refresh,
+                    "client_id": client_id,
+                    "client_secret": secret,
+                },
+            )
+            body = r.json() if r.content else {}
+            if r.status_code >= 400 or "access_token" not in body:
+                raise PlatformError(
+                    f"Tumblr login failed: {body.get('error_description') or r.status_code}"
+                )
+            self._token = body["access_token"]
+            new = body.get("refresh_token")
+            if new and new != refresh and self.on_rotate:
+                self.on_rotate(new)
+        return {"Authorization": f"Bearer {self._token}", "User-Agent": self.USER_AGENT}
+
+    def _json(self, r: httpx.Response) -> dict:
+        body = r.json() if r.content else {}
+        if r.status_code >= 400:
+            errors = body.get("errors") or [{}]
+            detail = errors[0].get("detail") or (body.get("meta") or {}).get("msg")
+            raise PlatformError(f"Tumblr: {detail or r.status_code}")
+        return body.get("response") or {}
+
+    def create_video_post(
+        self, path, *, caption: str, tags: list[str], state: str, width: int, height: int
+    ) -> str:
+        if state not in ("draft", "private", "published"):
+            raise ValueError("Unsupported Tumblr post state.")
+        content = []
+        if caption:
+            content.append({"type": "text", "text": caption})
+        content.append(
+            {
+                "type": "video",
+                "media": {
+                    "type": "video/mp4",
+                    "identifier": "video",
+                    "width": width,
+                    "height": height,
+                },
+            }
+        )
+        body = {"content": content, "state": state, "tags": ",".join(tags)}
+        r = self.http.post(
+            f"{self.API}/blog/{self.blog}/posts",
+            headers=self._auth(),
+            files=[
+                ("json", (None, json.dumps(body), "application/json")),
+                ("video", (path.name, path.read_bytes(), "video/mp4")),
+            ],
+            timeout=httpx.Timeout(600.0, connect=10.0),
+        )
+        post_id = str(self._json(r).get("id", ""))
+        if not re.fullmatch(r"\d{1,30}", post_id):
+            raise PlatformError("Tumblr didn't return the post id.")
+        return post_id
+
+    def post_state(self, post_id: str) -> str:
+        r = self.http.get(f"{self.API}/blog/{self.blog}/posts/{post_id}", headers=self._auth())
+        return str(self._json(r).get("state", ""))
 
 
 def _int(value) -> int | None:

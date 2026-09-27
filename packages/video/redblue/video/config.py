@@ -59,6 +59,8 @@ class VideoSettings(BaseSettings):
     )
     pinterest_token_file: Path | None = None  # keeps Pinterest's renewed refresh tokens
     bluesky_pds: str = "https://bsky.social"  # your PDS if you self-host
+    tumblr_blog: str = ""  # blog name (e.g. myblog) posts go to
+    tumblr_token_file: Path | None = None  # keeps Tumblr's renewed refresh tokens
 
     tavily_api_key: SecretStr | None = Field(default=None, alias="TAVILY_API_KEY")
     firecrawl_api_key: SecretStr | None = Field(default=None, alias="FIRECRAWL_API_KEY")
@@ -97,6 +99,9 @@ class VideoSettings(BaseSettings):
     )
     bluesky_handle: str | None = Field(default=None, alias="BLUESKY_HANDLE")
     bluesky_app_password: SecretStr | None = Field(default=None, alias="BLUESKY_APP_PASSWORD")
+    tumblr_client_id: str | None = Field(default=None, alias="TUMBLR_CLIENT_ID")
+    tumblr_client_secret: SecretStr | None = Field(default=None, alias="TUMBLR_CLIENT_SECRET")
+    tumblr_refresh_token: SecretStr | None = Field(default=None, alias="TUMBLR_REFRESH_TOKEN")
     pinterest_app_id: str | None = Field(default=None, alias="PINTEREST_APP_ID")
     pinterest_app_secret: SecretStr | None = Field(default=None, alias="PINTEREST_APP_SECRET")
     pinterest_refresh_token: SecretStr | None = Field(default=None, alias="PINTEREST_REFRESH_TOKEN")
@@ -206,6 +211,16 @@ class VideoSettings(BaseSettings):
     def bluesky_credentials(self) -> tuple[str, str] | None:
         if self.bluesky_handle and self.bluesky_app_password:
             return self.bluesky_handle.lstrip("@"), self.bluesky_app_password.get_secret_value()
+        return None
+
+    @property
+    def tumblr_credentials(self) -> tuple[str, str, str] | None:
+        """(client id, secret, refresh token); a token file, if present, wins over the env."""
+        refresh = self.tumblr_refresh_token.get_secret_value() if self.tumblr_refresh_token else ""
+        if self.tumblr_token_file and self.tumblr_token_file.is_file():
+            refresh = self.tumblr_token_file.read_text(encoding="utf-8").strip() or refresh
+        if self.tumblr_client_id and self.tumblr_client_secret and refresh:
+            return self.tumblr_client_id, self.tumblr_client_secret.get_secret_value(), refresh
         return None
 
     def key(self, name: str) -> str | None:

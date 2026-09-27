@@ -23,6 +23,8 @@ the CLI), only approved projects, and the global ``RB_VIDEO_UPLOAD_ENABLED`` swi
   posted); step 2 is a separate click where the person picks one subreddit and a title.
   Each render can go to one subreddit only, so nothing is cross-posted in bulk.
 - **Bluesky:** step 1 uploads to Bluesky's video service; step 2 is a separate click.
+- **Tumblr:** one request creates the post with the video, as a draft by default (publish
+  it from Tumblr), private, or published right away with a second confirmation.
 - **Threads:** step 1 lets Threads fetch the render from a signed link valid for one hour
   (it needs this site's public https address); step 2 is a separate click that posts it.
 
@@ -40,6 +42,7 @@ import os
 import time
 from datetime import timedelta
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlsplit
 
 import httpx
@@ -69,6 +72,7 @@ NAMES = {
     "pinterest": "Pinterest",
     "reddit": "Reddit",
     "bluesky": "Bluesky",
+    "tumblr": "Tumblr",
 }
 
 
@@ -108,6 +112,7 @@ def available(s: VideoSettings) -> dict[str, bool]:
             and bool(s.reddit_post_refresh_token and s.reddit_username)
         ),
         "bluesky": s.upload_enabled and s.bluesky_credentials is not None,
+        "tumblr": s.upload_enabled and s.tumblr_credentials is not None and bool(s.tumblr_blog),
         "pinterest": (
             s.upload_enabled and s.pinterest_credentials is not None and bool(s.pinterest_board_id)
         ),
@@ -148,6 +153,10 @@ def defaults(p: VideoProject) -> dict:
         "threads_text": _short_caption(p, 500),
         "pinterest_description": _caption_default(p, 800),
         "bluesky_text": _short_caption(p, 300),
+        "tumblr_caption": _caption_default(p, 4000),
+        "tumblr_tags": ", ".join(
+            h.lstrip("#") for h in (Script.model_validate(p.script).hashtags if p.script else [])
+        ),
         "title": (script.title if script else p.topic)[:200],
     }
 
@@ -270,6 +279,25 @@ class BlueskyRequest(BaseModel):
     @classmethod
     def _format(cls, v: str) -> str:
         return get_format(v).key
+
+
+class TumblrRequest(BaseModel):
+    format: str = "9:16"
+    caption: str = Field(default="", max_length=4096)
+    tags: list[str] = Field(default_factory=list)
+    state: Literal["draft", "private", "published"] = "draft"
+
+    @field_validator("format")
+    @classmethod
+    def _format(cls, v: str) -> str:
+        return get_format(v).key
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def _tags(cls, v) -> list[str]:
+        items = v.split(",") if isinstance(v, str) else list(v or [])
+        tags = [str(t).strip().lstrip("#")[:140] for t in items]
+        return list(dict.fromkeys(t for t in tags if t))[:30]
 
 
 class ThreadsRequest(BaseModel):
@@ -613,6 +641,10 @@ def refresh(db: Session, up: Upload, s: VideoSettings, http: httpx.Client | None
         if url:
             up.status = "published"
             _record(db, up, url)
+    elif up.platform == "tumblr" and up.status == "draft":
+        if tumblr_client(s, http).post_state(up.external_ref) == "published":
+            up.status = "published"
+            _record(db, up, tumblr_post_url(s, up.external_ref))
     elif up.platform == "threads" and up.external_ref:
         data = threads_client(s, http).status(up.external_ref)
         code = data.get("status", "")
@@ -1236,4 +1268,71 @@ def publish_bluesky(
     handle = (s.bluesky_handle or "").lstrip("@")
     _record(db, up, f"https://bsky.app/profile/{handle}/post/{rkey}")
     log.info("bluesky post %s by %s", rkey, confirmed_by)
+    return up
+
+
+# ---------------------------------------------------------------------- Tumblr
+
+
+def tumblr_client(s: VideoSettings, http: httpx.Client | None = None) -> clients.Tumblr:
+    path = Path(s.tumblr_token_file) if s.tumblr_token_file else None
+
+    def keep(new: str) -> None:
+        if path:
+            _write_token(path, new)
+        else:
+            log.warning(
+                "Tumblr issued a new refresh token; set RB_VIDEO_TUMBLR_TOKEN_FILE to keep it, "
+                "or the next refresh will need a new authorization."
+            )
+
+    return clients.Tumblr(s.tumblr_credentials, s.tumblr_blog, http, on_rotate=keep)
+
+
+def tumblr_post_url(s: VideoSettings, post_id: str) -> str:
+    return f"https://www.tumblr.com/{s.tumblr_blog}/{post_id}"
+
+
+def upload_tumblr(
+    db: Session,
+    p: VideoProject,
+    req: TumblrRequest,
+    s: VideoSettings,
+    *,
+    confirmed_by: str,
+    confirmed: bool,
+    confirmed_public: bool = False,
+    http: httpx.Client | None = None,
+) -> Upload:
+    """Create a Tumblr post with the video: a draft by default (the person publishes it from
+    Tumblr), private, or published right away with a second confirmation."""
+    path = _guard(db, p, s, "tumblr", req.format, confirmed_by, confirmed)
+    if req.state == "published" and not confirmed_public:
+        raise ValueError("Confirm that the post should be public on Tumblr right away.")
+    fmt = get_format(req.format)
+    post_id = tumblr_client(s, http).create_video_post(
+        path,
+        caption=req.caption,
+        tags=req.tags,
+        state=req.state,
+        width=fmt.width,
+        height=fmt.height,
+    )
+    up = Upload(
+        project_id=p.id,
+        platform="tumblr",
+        format=req.format,
+        mode=req.state,
+        status="draft" if req.state == "draft" else "published",
+        external_ref=post_id,
+        privacy="private" if req.state == "private" else "public",
+        uploaded_by=confirmed_by[:200],
+        published_by=confirmed_by[:200] if req.state == "published" else None,
+        meta={"blog": s.tumblr_blog},
+    )
+    db.add(up)
+    db.flush()
+    if req.state == "published":
+        _record(db, up, tumblr_post_url(s, post_id))
+    log.info("tumblr %s post %s for project %s by %s", req.state, post_id, p.id, confirmed_by)
     return up

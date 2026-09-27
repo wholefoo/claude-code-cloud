@@ -14,8 +14,8 @@ Trends
 ```
 
 "You upload" means by hand, or with the optional upload buttons for YouTube, TikTok,
-Instagram, Facebook, LinkedIn, X, Threads, Pinterest, Reddit and Bluesky, which a person
-presses for each video.
+Instagram, Facebook, LinkedIn, X, Threads, Pinterest, Reddit, Bluesky and Tumblr, which a
+person presses for each video.
 
 ## Quickstart
 
@@ -56,6 +56,7 @@ That's useful for testing, and you add keys as you go.
 | `PINTEREST_APP_ID` + `PINTEREST_APP_SECRET` + `PINTEREST_REFRESH_TOKEN` + `RB_VIDEO_PINTEREST_BOARD_ID` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Upload an approved render, then pin it to your board with a second click | You upload it yourself |
 | `REDDIT_CLIENT_ID` + `REDDIT_CLIENT_SECRET` + `REDDIT_POST_REFRESH_TOKEN` + `REDDIT_USERNAME` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Upload an approved render, then post it to one subreddit you choose | You upload it yourself |
 | `BLUESKY_HANDLE` + `BLUESKY_APP_PASSWORD` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Upload an approved render, then post it with a second click | You upload it yourself |
+| `TUMBLR_CLIENT_ID` + `TUMBLR_CLIENT_SECRET` + `TUMBLR_REFRESH_TOKEN` + `RB_VIDEO_TUMBLR_BLOG` (+ `RB_VIDEO_UPLOAD_ENABLED`) | Post an approved render to your blog (a draft by default) | You upload it yourself |
 
 Settings (`RB_VIDEO_*`): `NICHE`, `KEYWORDS` (JSON list), `REGION`, `SUBREDDITS` (JSON list),
 `GOOGLE_TRENDS_GEO`, `REDDIT_USER_AGENT`, `OUTPUT_DIR`, `TARGET_SECONDS`, `TEMPLATE`
@@ -69,7 +70,8 @@ Settings (`RB_VIDEO_*`): `NICHE`, `KEYWORDS` (JSON list), `REGION`, `SUBREDDITS`
 `FACEBOOK_API_VERSION` (default `v25.0`), `LINKEDIN_VERSION` (default `202606`),
 `X_TOKEN_FILE`, `X_MAX_CHARS` (default 280), `PUBLIC_BASE_URL` (default: `RB_BASE_URL`),
 `PINTEREST_BOARD_ID`, `PINTEREST_TOKEN_FILE`, `PINTEREST_API_HOST` (`api.pinterest.com` or
-`api-sandbox.pinterest.com`), `BLUESKY_PDS` (default `https://bsky.social`).
+`api-sandbox.pinterest.com`), `BLUESKY_PDS` (default `https://bsky.social`), `TUMBLR_BLOG`,
+`TUMBLR_TOKEN_FILE`.
 
 ### How sources are compared
 
@@ -94,11 +96,11 @@ about something else (say, football scores) ranks below a smaller trend in your 
   upload description lists sources, credits and an AI-assistance note.
 - **Human in the loop.** Renders wait in review; approval only marks them ready for *you*
   to upload. Optional direct upload to YouTube, TikTok, Instagram, Facebook, LinkedIn, X,
-  Threads, Pinterest, Reddit and Bluesky exists, but it's off by default and every upload is
-  a person pressing a button (or confirming in the CLI): no job, sweep or pipeline step ever
-  uploads or publishes. YouTube uploads are private unless the person chooses otherwise,
-  TikTok and Facebook go to drafts by default, and the others need a second click to
-  publish. Reddit posts go to one subreddit per render, chosen by the person each time.
+  Threads, Pinterest, Reddit, Bluesky and Tumblr exists, but it's off by default and every
+  upload is a person pressing a button (or confirming in the CLI): no job, sweep or pipeline
+  step ever uploads or publishes. YouTube uploads are private unless the person chooses
+  otherwise, TikTok, Facebook and Tumblr go to drafts by default, and the others need a
+  second click to publish. Reddit posts go to one subreddit per render, chosen by the person each time.
 
 ## Rendering
 
@@ -233,6 +235,14 @@ Unverified Google Cloud apps can only upload **private** videos (YouTube locks p
 unlisted uploads from unaudited API projects), so pass Google's API audit before relying on
 public uploads; until then, upload privately and publish from YouTube Studio. Each upload
 uses a large share of the default daily API quota, so check your quota in Google Cloud.
+
+### YouTube Shorts
+
+Tick **Publish as a YouTube Short** (or pass `--short` to `redblue video upload`). YouTube
+has no separate Shorts upload: a vertical or square video of up to three minutes is a Short.
+RedBlue checks the render qualifies (9:16, 4:5 or 1:1, at most 3 minutes) and adds
+`#Shorts` to the title (or the description, if the title is full). The box is ticked by
+default when the project's first format is vertical or square.
 
 ## Upload to TikTok (optional)
 
@@ -500,6 +510,31 @@ one. It can be revoked at any time and can't change your account password.
 export BLUESKY_HANDLE=you.bsky.social
 export BLUESKY_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
 export RB_VIDEO_BLUESKY_PDS=https://your-pds.example   # only if you self-host your PDS
+```
+
+## Upload to Tumblr (optional)
+
+One request creates the post with the video, so the choice is made up front:
+
+- **Draft (default):** the post waits in your Tumblr drafts; publish it from Tumblr. **Check
+  status** (or the tracking job) notices when it's published and records the link.
+- **Private:** posted so only you can see it (not tracked).
+- **Published:** public on the blog right away; needs a second confirmation.
+
+The caption is pre-filled with the title, AI note and hashtags, and the hashtags become
+Tumblr tags (`redblue video tumblr 12 --state draft`). Tumblr allows 20 video uploads and 60
+minutes of video per day per account, and 250 new posts per day.
+
+**Setup.** Register an application at tumblr.com/oauth/apps with an OAuth2 redirect URL.
+Authorize your account once at `https://www.tumblr.com/oauth2/authorize` with the scopes
+`basic write offline_access`, exchange the code at `https://api.tumblr.com/v2/oauth2/token`,
+and keep the refresh token. Tumblr issues a new refresh token on every refresh, so use the
+token file:
+
+```bash
+export TUMBLR_CLIENT_ID=... TUMBLR_CLIENT_SECRET=... TUMBLR_REFRESH_TOKEN=...
+export RB_VIDEO_TUMBLR_BLOG=yourblog
+export RB_VIDEO_TUMBLR_TOKEN_FILE=/var/lib/redblue/tumblr.token
 ```
 
 ## Snapchat

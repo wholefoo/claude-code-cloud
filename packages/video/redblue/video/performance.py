@@ -44,6 +44,7 @@ PLATFORMS: dict[str, tuple[str, ...]] = {
     "snapchat": ("snapchat.com",),  # recorded by hand (no posting API)
     "reddit": ("reddit.com", "redd.it"),
     "bluesky": ("bsky.app",),
+    "tumblr": ("tumblr.com",),
     "other": (),
 }
 MIN_PEERS = 3  # mature videos on a platform before lift (vs. your median) is meaningful
