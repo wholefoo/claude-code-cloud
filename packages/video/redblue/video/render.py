@@ -11,6 +11,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from redblue.video.captions import WordTiming, chunk, even_timings
 from redblue.video.schemas import Script
 
 PALETTE = ["#1f4fd1", "#0f1115", "#c2185b", "#1b7a3d", "#8a5a00"]
@@ -65,6 +66,7 @@ def media_duration(path: Path) -> float | None:
 class BeatMedia:
     clip: Path | None = None  # licensed stock footage
     narration: Path | None = None  # TTS audio
+    words: list[WordTiming] | None = None  # word timings relative to the beat (Whisper)
 
 
 def _ts(t: float) -> str:
@@ -77,7 +79,16 @@ def _ass_text(text: str) -> str:
     return text.replace("\\", "").replace("{", "(").replace("}", ")").replace("\n", " ").strip()
 
 
-def build_ass(script: Script, durations: list[float], width: int, height: int) -> str:
+def build_ass(
+    script: Script,
+    durations: list[float],
+    width: int,
+    height: int,
+    words: list[list[WordTiming] | None] | None = None,
+) -> str:
+    """Title per beat plus word-grouped captions. With word timings (Whisper), captions
+    follow the narration and each word fills in karaoke-style as it is spoken; without,
+    timings are spread by word length."""
     head = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {width}
@@ -87,25 +98,31 @@ WrapStyle: 0
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Title,DejaVu Sans,86,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,6,2,8,80,80,260,1
-Style: Caption,DejaVu Sans,64,&H00FFFFFF,&H0000FFFF,&H00000000,&H96000000,-1,0,0,0,100,100,0,0,3,4,0,2,90,90,420,1
+Style: Caption,DejaVu Sans,64,&H0000FFFF,&H00FFFFFF,&H00000000,&H96000000,-1,0,0,0,100,100,0,0,3,4,0,2,90,90,420,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     lines = []
     t = 0.0
-    for beat, d in zip(script.beats, durations, strict=True):
+    for i, (beat, d) in enumerate(zip(script.beats, durations, strict=True)):
         if beat.on_screen_text:
             lines.append(
                 f"Dialogue: 0,{_ts(t)},{_ts(t + d)},Title,,0,0,0,,{_ass_text(beat.on_screen_text)}"
             )
-        words = beat.narration.split()
-        chunks = [" ".join(words[i : i + 4]) for i in range(0, len(words), 4)] or [""]
-        step = d / len(chunks)
-        for j, chunk in enumerate(chunks):
+        timed = (words[i] if words and i < len(words) else None) or even_timings(beat.narration, d)
+        groups = chunk([w for w in timed if w.start < d])
+        for j, group in enumerate(groups):
+            start = group[0].start
+            nxt = groups[j + 1][0].start if j + 1 < len(groups) else d
+            end = min(max(group[-1].end, start + 0.3) + 0.6, nxt, d)
+            parts = []
+            for k, w in enumerate(group):
+                until = group[k + 1].start if k + 1 < len(group) else w.end
+                cs = max(1, round((until - w.start) * 100))
+                parts.append(f"{{\\kf{cs}}}{_ass_text(w.word)}")
             lines.append(
-                f"Dialogue: 1,{_ts(t + j * step)},{_ts(t + (j + 1) * step)},Caption,,"
-                f"0,0,0,,{_ass_text(chunk)}"
+                f"Dialogue: 1,{_ts(t + start)},{_ts(t + end)},Caption,,0,0,0,," + " ".join(parts)
             )
         t += d
     return head + "\n".join(lines) + "\n"
@@ -172,7 +189,8 @@ def render(
         _run(["-f", "concat", "-safe", "0", "-i", "v.txt", "-c", "copy", "video.mp4"], work)
         _run(["-f", "concat", "-safe", "0", "-i", "a.txt", "-c", "copy", "audio.wav"], work)
         (work / "subs.ass").write_text(
-            build_ass(script, durations, width, height), encoding="utf-8"
+            build_ass(script, durations, width, height, [m.words for m in media]),
+            encoding="utf-8",
         )
         _run(
             [

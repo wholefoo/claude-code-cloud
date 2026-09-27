@@ -44,7 +44,7 @@ That's useful for testing, and you add keys as you go.
 
 Settings (`RB_VIDEO_*`): `NICHE`, `KEYWORDS` (JSON list), `REGION`, `SUBREDDITS` (JSON list),
 `GOOGLE_TRENDS_GEO`, `REDDIT_USER_AGENT`, `OUTPUT_DIR`, `TARGET_SECONDS`, `WIDTH`/`HEIGHT`
-(default 1080×1920), `VOICE_ID`.
+(default 1080×1920), `VOICE_ID`, `CAPTIONS` (`whisper` or `even`), `WHISPER_MODEL`.
 
 ### How sources are compared
 
@@ -72,11 +72,30 @@ about something else (say, football scores) ranks below a smaller trend in your 
 
 FFmpeg (the static binary from `imageio-ffmpeg`, or your system `ffmpeg`) renders each beat
 from its stock clip (scaled/cropped to 9:16) or a brand colour, mixes the narration, and burns
-in a title and word-grouped captions from a generated ASS subtitle file. A 45-second video
-renders in well under a minute on a small VPS. For richer motion graphics, swap in Remotion
-later: `render.render()` is the only function to replace.
+in a title and word-grouped captions from a generated ASS subtitle file.
+
+### Word-level captions (Whisper)
+
+```bash
+pip install 'redblue-video[whisper]'     # faster-whisper; runs locally, no key
+export RB_VIDEO_WHISPER_MODEL=base.en     # tiny.en is faster, small.en more accurate
+```
+
+With narration, each beat's audio is transcribed locally by Whisper with word timestamps.
+The script's words are aligned to what Whisper heard, so captions keep the script's spelling
+("2x", "Wi-Fi") but use the audio's timing. Words Whisper missed or heard differently get
+timings interpolated from their neighbours. Captions appear in short groups (split on
+punctuation, pauses, four words or 1.6 s) and each word fills in karaoke-style as it's spoken.
+
+The model downloads from Hugging Face on first use (~150 MB for `base.en`) and is cached.
+Without faster-whisper, without narration, if the model can't be loaded, or with
+`RB_VIDEO_CAPTIONS=even`, captions fall back to timing spread by word length.
+
+A 45-second video renders in well under a minute on a small VPS (Whisper adds a few seconds
+per beat on CPU with `base.en`). For richer motion graphics, swap in Remotion later:
+`render.render()` is the only function to replace.
 
 ## Next steps (not in the MVP)
 
-Whisper word-level caption timing, multiple templates and aspect ratios, performance
-tracking from platform analytics to tune scoring, and optional direct upload after approval.
+Multiple templates and aspect ratios, performance tracking from platform analytics to tune
+scoring, and optional direct upload after approval.

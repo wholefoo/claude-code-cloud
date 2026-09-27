@@ -17,9 +17,10 @@ from sqlalchemy.orm import Session
 from redblue.core.context import Platform
 from redblue.core.db import utcnow
 from redblue.video import clients
+from redblue.video.captions import Transcriber, align, get_transcriber
 from redblue.video.config import VideoSettings
 from redblue.video.models import Trend, VideoProject
-from redblue.video.render import BeatMedia, render
+from redblue.video.render import BeatMedia, media_duration, render
 from redblue.video.schemas import Asset, Brief, Script, Source, TrendSignal
 from redblue.video.scoring import score_all
 from redblue.video.writing import make_brief, make_script
@@ -29,9 +30,14 @@ log = logging.getLogger("redblue.video")
 
 class Pipeline:
     def __init__(
-        self, platform: Platform, settings: VideoSettings, http: httpx.Client | None = None
+        self,
+        platform: Platform,
+        settings: VideoSettings,
+        http: httpx.Client | None = None,
+        transcriber: Transcriber | None = None,
     ):
         self.platform, self.s, self.http = platform, settings, http
+        self._transcriber = transcriber
 
     @property
     def model(self) -> str:
@@ -158,6 +164,7 @@ class Pipeline:
         workdir = (self.s.output_dir / f"project-{p.id}").resolve()
         workdir.mkdir(parents=True, exist_ok=True)
         media, assets = self._assets(script, workdir)
+        self._time_words(script, media)
         p.status = "rendering"
         out = render(
             script, media, workdir / f"video-{p.id}.mp4", width=self.s.width, height=self.s.height
@@ -215,6 +222,30 @@ class Pipeline:
                     log.info("tts beat %s: %s", i, exc)
             media.append(m)
         return media, assets
+
+    def transcriber(self) -> Transcriber | None:
+        if self._transcriber is None and self.s.captions == "whisper":
+            self._transcriber = get_transcriber("whisper", self.s.whisper_model)
+            if self._transcriber is None:  # don't retry the load for every beat
+                self.s = self.s.model_copy(update={"captions": "even"})
+        return self._transcriber
+
+    def _time_words(self, script: Script, media: list[BeatMedia]) -> None:
+        """Word-level caption timing from the narration audio (Whisper, local)."""
+        if not any(m.narration for m in media):
+            return
+        whisper = self.transcriber()
+        if whisper is None:
+            return
+        for beat, m in zip(script.beats, media, strict=True):
+            if not m.narration:
+                continue
+            try:
+                heard = whisper.words(m.narration)
+            except Exception as exc:  # noqa: BLE001 - captions degrade, render continues
+                log.info("whisper failed on %s: %s", m.narration.name, exc)
+                continue
+            m.words = align(beat.narration, heard, media_duration(m.narration) or beat.seconds)
 
     # ------------------------------------------------------------------ 6. review
 

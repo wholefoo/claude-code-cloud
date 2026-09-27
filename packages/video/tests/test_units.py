@@ -1,3 +1,4 @@
+import re
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -147,7 +148,9 @@ def test_ass_escapes_override_tags():
     )
     ass = build_ass(s, [2, 2], 1080, 1920)
     events = ass.split("[Events]")[1]
-    assert "{" not in events and "\\pos" not in events
+    # Only our own karaoke tags may appear; user text can't open an override block.
+    assert "\\pos" not in events and "\\b1" not in events
+    assert re.sub(r"\{\\kf\d+\}", "", events).count("{") == 0
 
 
 def test_topic_cleanup():

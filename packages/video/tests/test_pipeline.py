@@ -181,3 +181,40 @@ def test_reddit_and_google_trends_signals(platform, vsettings, media_files):
     assert "Chip maker unveils" in gt["ai chip"].signal["snippet"]
     # The niche ("AI chips") makes the relevant search outrank the bigger unrelated one.
     assert gt["ai chip"].score > gt["football scores"].score
+
+
+def test_whisper_word_timings_drive_captions(platform, vsettings, media_files):
+    from redblue.video.render import BeatMedia
+
+    fake = _vconf_fake_whisper()
+    calls = []
+    pipe = Pipeline(platform, vsettings, _vconf.fake_apis(media_files, calls), fake)
+    with platform.db.session() as db:
+        p = pipe.start_project(db, topic="AI chips")
+        pipe.run(db, p)
+        assert p.status == "review", p.problems
+    assert fake.calls and all(c.startswith("voice-") for c in fake.calls)
+    # The alignment step itself: script words get the (fake) Whisper timings.
+    from redblue.video.schemas import Script
+
+    script = Script.model_validate(p.script)
+    media = [BeatMedia(narration=Path(p.render_path).parent / "voice-00.mp3")]
+    pipe._time_words(
+        Script(
+            title=script.title,
+            hook=script.hook,
+            cta=script.cta,
+            beats=script.beats[:1] + script.beats[:1],
+        ),
+        media + [BeatMedia()],
+    )
+    assert media[0].words and media[0].words[0].start == 0.05
+
+
+def _vconf_fake_whisper():
+    spec = importlib.util.spec_from_file_location(
+        "vcap", Path(__file__).with_name("test_captions.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.FakeWhisper()
