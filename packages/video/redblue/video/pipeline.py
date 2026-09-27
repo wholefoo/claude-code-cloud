@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from redblue.core.context import Platform
 from redblue.core.db import utcnow
-from redblue.video import clients
+from redblue.video import clients, performance
 from redblue.video.captions import Transcriber, align, get_transcriber
 from redblue.video.config import VideoSettings
 from redblue.video.models import Trend, VideoProject
@@ -66,7 +66,15 @@ class Pipeline:
             log.info("sweep: %s", n)
         seen = {t for (t,) in db.execute(select(Trend.url).where(Trend.url.is_not(None)))}
         added = []
-        for sig, score, parts in score_all(signals, self.s.niche, self.s.keywords):
+        fb = performance.feedback(db, self.s)  # your track record, once there's enough data
+        scored = score_all(
+            signals,
+            self.s.niche,
+            self.s.keywords,
+            feedback=fb,
+            weight_overrides=self.s.score_weights,
+        )
+        for sig, score, parts in scored:
             if sig.url and sig.url in seen:
                 continue
             t = Trend(
@@ -274,6 +282,12 @@ class Pipeline:
             raise ValueError("Only rendered videos can be reviewed.")
         p.status = "approved" if approve else "rejected"
         p.review_note, p.reviewed_by = note[:2000], user_id
+
+    # ------------------------------------------------------------------ 7. performance
+
+    def track(self, db: Session) -> performance.TrackResult:
+        """Snapshot stats for published videos (read-only; nothing is ever posted)."""
+        return performance.track(db, self.s, self.http)
 
     def run(self, db: Session, p: VideoProject) -> VideoProject:
         """Brief → script → render in one go (stops at script problems for a human)."""

@@ -2,11 +2,11 @@
 human approval. Mounted under /admin/video by :func:`install_video`."""
 
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, FastAPI, Form, HTTPException, Request
+from fastapi import APIRouter, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -15,8 +15,9 @@ from redblue.admin.app import DB, Writer, back, need
 from redblue.admin.app import HERE as ADMIN_DIR
 from redblue.core.auth import Role
 from redblue.templates.env import make_templates
+from redblue.video import performance
 from redblue.video.config import get_video_settings
-from redblue.video.models import Trend, VideoProject
+from redblue.video.models import MetricSnapshot, Publication, Trend, VideoProject
 from redblue.video.pipeline import Pipeline, description
 from redblue.video.schemas import Script
 from redblue.video.templates import FORMATS, TEMPLATES, get_format
@@ -134,7 +135,151 @@ def project(pid: int, request: Request, db: DB, user: Writer) -> HTMLResponse:
         current_template=tpl.key,
         current_formats=[f.key for f in fmts],
         renders=renders,
+        publications=_publications(db, pid),
+        platforms=list(performance.PLATFORMS),
     )
+
+
+def _publications(db, pid: int) -> list[dict]:
+    pubs = db.scalars(
+        select(Publication).where(Publication.project_id == pid).order_by(Publication.id)
+    )
+    out = []
+    for pub in pubs:
+        latest = db.scalar(
+            select(MetricSnapshot)
+            .where(MetricSnapshot.publication_id == pub.id)
+            .order_by(MetricSnapshot.taken_at.desc())
+            .limit(1)
+        )
+        out.append({"pub": pub, "latest": latest})
+    return out
+
+
+def _date(value: str) -> datetime | None:
+    if not value.strip():
+        return None
+    try:
+        return datetime.fromisoformat(value.strip())
+    except ValueError:
+        raise ValueError("Enter the publish date as YYYY-MM-DD.") from None
+
+
+def _count(value: str) -> int | None:
+    value = value.strip().replace(",", "")
+    if not value:
+        return None
+    if not value.isdigit():
+        raise ValueError("Counts must be whole numbers.")
+    return int(value)
+
+
+@router.post("/projects/{pid:int}/publications")
+def add_publication(
+    pid: int,
+    db: DB,
+    user: Writer,
+    url: Annotated[str, Form()],
+    platform: Annotated[str, Form()] = "",
+    format: Annotated[str, Form()] = "",
+    published_on: Annotated[str, Form()] = "",
+):
+    p = _project(db, pid)
+    try:
+        pub = performance.record(
+            db,
+            p,
+            url,
+            platform=platform or None,
+            format=format or None,
+            published_at=_date(published_on),
+        )
+    except ValueError as exc:
+        return back(f"/admin/video/projects/{pid}", str(exc))
+    hint = (
+        " Stats are fetched every 6 hours."
+        if pub.platform == "youtube"
+        else " Add its numbers by hand or import a CSV on the Performance page."
+    )
+    return back(f"/admin/video/projects/{pid}", f"Recorded on {pub.platform}.{hint}")
+
+
+def _publication(db, pub_id: int) -> Publication:
+    pub = db.get(Publication, pub_id)
+    if pub is None:
+        raise HTTPException(404)
+    return pub
+
+
+@router.post("/publications/{pub_id:int}/metrics")
+def add_metrics(
+    pub_id: int,
+    db: DB,
+    user: Writer,
+    views: Annotated[str, Form()],
+    likes: Annotated[str, Form()] = "",
+    comments: Annotated[str, Form()] = "",
+    shares: Annotated[str, Form()] = "",
+    avg_view_pct: Annotated[str, Form()] = "",
+):
+    pub = _publication(db, pub_id)
+    dest = f"/admin/video/projects/{pub.project_id}"
+    try:
+        pct = avg_view_pct.strip().rstrip("%")
+        performance.add_snapshot(
+            db,
+            pub,
+            source="manual",
+            views=_count(views) or 0,
+            likes=_count(likes),
+            comments=_count(comments),
+            shares=_count(shares),
+            avg_view_pct=float(pct) if pct else None,
+        )
+    except ValueError as exc:
+        return back(dest, str(exc)[:200])
+    return back(dest, "Numbers saved.")
+
+
+@router.post("/publications/{pub_id:int}/delete")
+def delete_publication(pub_id: int, db: DB, user: Writer):
+    need(user, Role.editor)
+    pub = _publication(db, pub_id)
+    dest = f"/admin/video/projects/{pub.project_id}"
+    db.delete(pub)
+    return back(dest, "Publication removed.")
+
+
+@router.get("/performance")
+def performance_page(request: Request, db: DB, user: Writer) -> HTMLResponse:
+    vs = get_video_settings()
+    return _render(
+        request,
+        "video_performance.html",
+        user,
+        r=performance.report(db, vs),
+        youtube_key=bool(vs.key("youtube")),
+        youtube_oauth=bool(vs.youtube_oauth),
+    )
+
+
+@router.post("/performance/track")
+def performance_track(request: Request, db: DB, user: Writer):
+    res = _pipeline(request).track(db)
+    msg = f"Updated {res.updated} video(s)."
+    if res.notes:
+        msg += " " + " ".join(res.notes)
+    return back("/admin/video/performance", msg[:400])
+
+
+@router.post("/performance/import")
+async def performance_import(db: DB, user: Writer, file: Annotated[UploadFile, File()]):
+    raw = (await file.read(2 * 1024 * 1024)).decode("utf-8-sig", errors="replace")
+    n, errors = performance.import_csv(db, raw)
+    msg = f"Imported {n} row(s)."
+    if errors:
+        msg += " " + "; ".join(errors[:5])
+    return back("/admin/video/performance", msg[:400])
 
 
 @router.post("/projects/{pid:int}/look")
@@ -247,4 +392,10 @@ def install_video(app: FastAPI) -> None:
             if p:
                 Pipeline(rb, get_video_settings()).run(db, p)
 
+    @rb.jobs.register("video.track")
+    def _track(_payload):
+        with rb.db.session() as db:
+            Pipeline(rb, get_video_settings()).track(db)
+
     rb.jobs.every("video.sweep", timedelta(hours=6))
+    rb.jobs.every("video.track", timedelta(hours=6))

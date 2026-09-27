@@ -111,6 +111,123 @@ class YouTubeTrends:
         )
 
 
+class YouTubeStats:
+    """Public counts for *your own* uploads (YouTube Data API, API key, 1 quota unit per 50)."""
+
+    BASE = YouTubeTrends.BASE
+
+    def __init__(self, api_key: str | None, client: httpx.Client | None = None):
+        if not api_key:
+            raise MissingKey("Set YOUTUBE_API_KEY to fetch YouTube stats.")
+        self.key, self.http = api_key, _client(client)
+
+    def stats(self, ids: list[str]) -> dict[str, dict]:
+        out: dict[str, dict] = {}
+        for i in range(0, len(ids), 50):
+            r = self.http.get(
+                f"{self.BASE}/videos",
+                params={
+                    "part": "snippet,statistics",
+                    "id": ",".join(ids[i : i + 50]),
+                    "key": self.key,
+                },
+            )
+            r.raise_for_status()
+            for item in r.json().get("items", []):
+                st = item.get("statistics", {})
+                out[item["id"]] = {
+                    "views": _int(st.get("viewCount")) or 0,
+                    "likes": _int(st.get("likeCount")),
+                    "comments": _int(st.get("commentCount")),
+                    "published_at": _parse_dt(item.get("snippet", {}).get("publishedAt")),
+                }
+        return out
+
+
+class YouTubeAnalytics:
+    """YouTube Analytics API, read-only (scope ``yt-analytics.readonly``): retention and
+    shares, which public counts don't include. Needs an OAuth client and a refresh token for
+    the channel owner; see the README. Data lags two to three days."""
+
+    TOKEN_URL = "https://oauth2.googleapis.com/token"  # noqa: S105  # nosec B105
+    REPORTS = "https://youtubeanalytics.googleapis.com/v2/reports"
+    METRICS = "views,likes,comments,shares,averageViewDuration,averageViewPercentage"
+
+    def __init__(self, oauth: tuple[str, str, str] | None, client: httpx.Client | None = None):
+        if not oauth:
+            raise MissingKey(
+                "Set YOUTUBE_OAUTH_CLIENT_ID, YOUTUBE_OAUTH_CLIENT_SECRET and "
+                "YOUTUBE_OAUTH_REFRESH_TOKEN for YouTube retention stats."
+            )
+        self.oauth, self.http = oauth, _client(client)
+        self._token: str | None = None
+
+    def _auth(self) -> dict:
+        if self._token is None:
+            cid, secret, refresh = self.oauth
+            r = self.http.post(
+                self.TOKEN_URL,
+                data={
+                    "client_id": cid,
+                    "client_secret": secret,
+                    "refresh_token": refresh,
+                    "grant_type": "refresh_token",
+                },
+            )
+            r.raise_for_status()
+            self._token = r.json()["access_token"]
+        return {"Authorization": f"Bearer {self._token}"}
+
+    def stats(self, ids: list[str], since: datetime) -> dict[str, dict]:
+        out: dict[str, dict] = {}
+        today = datetime.now(UTC).date().isoformat()
+        for i in range(0, len(ids), 200):
+            r = self.http.get(
+                self.REPORTS,
+                headers=self._auth(),
+                params={
+                    "ids": "channel==MINE",
+                    "startDate": since.date().isoformat(),
+                    "endDate": today,
+                    "metrics": self.METRICS,
+                    "dimensions": "video",
+                    "filters": "video==" + ",".join(ids[i : i + 200]),
+                    "sort": "-views",
+                    "maxResults": 200,
+                },
+            )
+            r.raise_for_status()
+            body = r.json()
+            names = [h["name"] for h in body.get("columnHeaders", [])]
+            for row in body.get("rows", []) or []:
+                rec = dict(zip(names, row, strict=False))
+                vid = str(rec.pop("video", ""))
+                if vid:
+                    out[vid] = {
+                        "views": _int(rec.get("views")) or 0,
+                        "likes": _int(rec.get("likes")),
+                        "comments": _int(rec.get("comments")),
+                        "shares": _int(rec.get("shares")),
+                        "avg_view_seconds": _float(rec.get("averageViewDuration")),
+                        "avg_view_pct": _float(rec.get("averageViewPercentage")),
+                    }
+        return out
+
+
+def _int(value) -> int | None:
+    try:
+        return int(value) if value is not None and value != "" else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _float(value) -> float | None:
+    try:
+        return float(value) if value is not None and value != "" else None
+    except (TypeError, ValueError):
+        return None
+
+
 class Reddit:
     """Reddit Data API, application-only OAuth (register a "script"/"web" app at
     reddit.com/prefs/apps). Reads post titles, scores and comment counts only; post bodies

@@ -63,6 +63,37 @@
     <p class="rb-muted">Check facts against the sources and that every clip is licensed.</p>
   </section>
   {% endif %}
+  {% if project.status == "approved" or publications %}
+  <section class="rb-card"><h2>Published</h2>
+    <p class="rb-muted">After you upload it yourself, record where. RedBlue only reads the numbers; it never posts.</p>
+    {% for item in publications %}{% set pub = item.pub %}{% set m = item.latest %}
+    <div class="rb-pub">
+      <p><strong>{{ pub.platform }}</strong>{% if pub.format %} · {{ pub.format }}{% endif %} · {{ pub.published_at.strftime("%Y-%m-%d") }}<br>
+      <a href="{{ pub.url }}" rel="noopener noreferrer" target="_blank">{{ pub.url }}</a><br>
+      {% if m %}<span>{{ "{:,}".format(m.views) }} views{% if m.likes is not none %} · {{ "{:,}".format(m.likes) }} likes{% endif %}{% if m.comments is not none %} · {{ "{:,}".format(m.comments) }} comments{% endif %}{% if m.avg_view_pct is not none %} · {{ m.avg_view_pct | round(1) }}% viewed{% endif %}</span> <span class="rb-muted">({{ m.source }}, {{ m.taken_at.strftime("%Y-%m-%d %H:%M") }} UTC)</span>{% else %}<span class="rb-muted">No numbers yet.</span>{% endif %}</p>
+      <details><summary>Enter numbers</summary>
+      <form class="rb-form" method="post" action="/admin/video/publications/{{ pub.id }}/metrics"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label>Views <input name="views" inputmode="numeric" required></label>
+        <label>Likes <input name="likes" inputmode="numeric"></label>
+        <label>Comments <input name="comments" inputmode="numeric"></label>
+        <label>Shares <input name="shares" inputmode="numeric"></label>
+        <label>Average % viewed <input name="avg_view_pct" inputmode="decimal"></label>
+        <button class="rb-btn">Save numbers</button></form></details>
+      {% if user.has_role(Role.editor) %}<form method="post" action="/admin/video/publications/{{ pub.id }}/delete"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rb-link">remove</button></form>{% endif %}
+    </div>
+    {% endfor %}
+    {% if project.status == "approved" %}
+    <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/publications"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Video URL <input name="url" type="url" required placeholder="https://youtube.com/shorts/…"></label>
+      <label>Platform <select name="platform"><option value="">Detect from URL</option>{% for pl in platforms %}<option value="{{ pl }}">{{ pl }}</option>{% endfor %}</select></label>
+      <label>Format <select name="format"><option value="">—</option>{% for r in renders %}<option value="{{ r.key }}">{{ r.key }}</option>{% endfor %}</select></label>
+      <label>Published on <input name="published_on" type="date"></label>
+      <button class="rb-btn rb-btn--primary">Record publication</button>
+    </form>
+    {% endif %}
+    <p><a href="/admin/video/performance">Performance →</a></p>
+  </section>
+  {% endif %}
   {% if project.review_note %}<section class="rb-card"><h2>Review note</h2><p>{{ project.review_note }}</p></section>{% endif %}
   {% if project.assets %}<section class="rb-card"><h2>Assets &amp; licenses</h2><ul>{% for a in project.assets %}<li>{{ a.kind }}: {{ a.license }}{% if a.source_url %} (<a href="{{ a.source_url }}" rel="noopener noreferrer" target="_blank">source</a>){% endif %}</li>{% endfor %}</ul></section>{% endif %}
 </aside>
