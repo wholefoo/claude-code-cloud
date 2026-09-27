@@ -826,5 +826,112 @@ def video_linkedin_publish(
         typer.echo(f"Posted: {up.url}")
 
 
+def _social_step1(platform: str, project: int, fmt: str, text_key: str, **extra):
+    """Shared CLI flow for upload-then-post platforms (X, Threads)."""
+    import getpass
+
+    import httpx
+
+    from redblue.video import upload_social as social
+    from redblue.video.models import VideoProject
+
+    pipe = _video()
+    _need_person()
+    with pipe.platform.db.session() as s:
+        p = s.get(VideoProject, project)
+        if p is None:
+            raise typer.BadParameter(f"No project #{project}")
+        text = social.defaults(p)[text_key]
+        model = social.XRequest if platform == "x" else social.ThreadsRequest
+        try:
+            req = model(format=fmt, text=text)
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from None
+        typer.echo(f"Post text: {req.text}")
+        if not typer.confirm("I watched this render and have the rights to it. Upload?"):
+            raise typer.Abort()
+        fn = social.upload_x if platform == "x" else social.upload_threads
+        if platform == "threads":
+            extra = {
+                "public_base": pipe.s.public_base_url or pipe.platform.settings.base_url,
+                "secret": pipe.platform.settings.secret_key.get_secret_value(),
+            }
+        try:
+            up = fn(
+                s, p, req, pipe.s, confirmed_by=f"cli:{getpass.getuser()}", confirmed=True, **extra
+            )
+        except (
+            ValueError,
+            social.UploadDisabled,
+            social.clients.PlatformError,
+            httpx.HTTPError,
+        ) as exc:
+            typer.secho(f"Upload failed: {exc}", fg="red")
+            raise typer.Exit(1) from None
+        typer.echo(
+            f"Upload #{up.id} is processing (not posted). Post it with: "
+            f"redblue video {platform}-publish {up.id}"
+        )
+
+
+def _social_step2(platform: str, upload: int):
+    import getpass
+
+    import httpx
+
+    from redblue.video import upload_social as social
+    from redblue.video.models import Upload
+
+    pipe = _video()
+    _need_person()
+    with pipe.platform.db.session() as s:
+        up = s.get(Upload, upload)
+        if up is None or up.platform != platform:
+            raise typer.BadParameter(f"No {social.name(platform)} upload #{upload}")
+        if not typer.confirm(f"Post this PUBLICLY on {social.name(platform)} now?"):
+            raise typer.Abort()
+        try:
+            social.publish(s, up, pipe.s, confirmed_by=f"cli:{getpass.getuser()}", confirmed=True)
+        except (
+            ValueError,
+            social.UploadDisabled,
+            social.clients.PlatformError,
+            httpx.HTTPError,
+        ) as exc:
+            typer.secho(f"Publish failed: {exc}", fg="red")
+            raise typer.Exit(1) from None
+        typer.echo(f"Posted: {up.url or '(link pending)'}")
+
+
+@video_app.command("x")
+def video_x(
+    project: int = typer.Argument(..., help="Approved project id"),
+    fmt: str = typer.Option("16:9", "--format", "-f", help="Which render to upload"),
+):
+    """Upload an approved render to X (not posted until you run x-publish)."""
+    _social_step1("x", project, fmt, "x_text")
+
+
+@video_app.command("x-publish")
+def video_x_publish(upload: int = typer.Argument(..., help="Upload id")):
+    """Post an uploaded video on X. Always asks you to confirm."""
+    _social_step2("x", upload)
+
+
+@video_app.command("threads")
+def video_threads(
+    project: int = typer.Argument(..., help="Approved project id"),
+    fmt: str = typer.Option("9:16", "--format", "-f", help="Which render to send"),
+):
+    """Send an approved render to Threads (not posted until you run threads-publish)."""
+    _social_step1("threads", project, fmt, "threads_text")
+
+
+@video_app.command("threads-publish")
+def video_threads_publish(upload: int = typer.Argument(..., help="Upload id")):
+    """Post an uploaded video on Threads. Always asks you to confirm."""
+    _social_step2("threads", upload)
+
+
 if __name__ == "__main__":
     app()

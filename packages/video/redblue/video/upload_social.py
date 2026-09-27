@@ -16,17 +16,25 @@ the CLI), only approved projects, and the global ``RB_VIDEO_UPLOAD_ENABLED`` swi
   Business Suite); publishing right away needs a second confirmation.
 - **LinkedIn:** step 1 uploads the video (not visible); step 2 is a separate click that
   creates the post, with the visibility (anyone / connections) chosen then.
+- **X:** step 1 uploads the video (not posted); step 2 is a separate click that posts it.
+- **Threads:** step 1 lets Threads fetch the render from a signed link valid for one hour
+  (it needs this site's public https address); step 2 is a separate click that posts it.
 
 :func:`refresh` only *reads* status. It's safe to run from the tracking job, and it never
-publishes: that happens only in :func:`publish_instagram` and :func:`publish_linkedin`.
+publishes: that happens only in the ``publish_*`` functions, each behind a person's click.
 """
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import ipaddress
 import logging
 import os
+import time
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import httpx
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -50,6 +58,8 @@ NAMES = {
     "instagram": "Instagram",
     "facebook": "Facebook",
     "linkedin": "LinkedIn",
+    "x": "X",
+    "threads": "Threads",
 }
 
 
@@ -80,6 +90,8 @@ def available(s: VideoSettings) -> dict[str, bool]:
         "instagram": s.upload_enabled and s.instagram_credentials is not None,
         "facebook": s.upload_enabled and s.facebook_credentials is not None,
         "linkedin": s.upload_enabled and s.linkedin_credentials is not None,
+        "x": s.upload_enabled and s.x_credentials is not None,
+        "threads": s.upload_enabled and s.threads_credentials is not None,
     }
 
 
@@ -93,6 +105,19 @@ def _caption_default(p: VideoProject, limit: int) -> str:
     return "\n\n".join(parts)[:limit]
 
 
+def _short_caption(p: VideoProject, limit: int) -> str:
+    """Title, hashtags and a short AI note, trimmed to fit a short-post limit."""
+    script = Script.model_validate(p.script) if p.script else None
+    title = script.title if script else p.topic
+    tags = " ".join("#" + h.lstrip("#") for h in (script.hashtags[:3] if script else []))
+    note = "(AI-assisted)" if p.ai_generated else ""
+    for parts in ([title, tags, note], [title, note], [title]):
+        text = " ".join(x for x in parts if x)
+        if len(text) <= limit:
+            return text
+    return title[: limit - 1] + "…"
+
+
 def defaults(p: VideoProject) -> dict:
     script = Script.model_validate(p.script) if p.script else None
     return {
@@ -100,6 +125,8 @@ def defaults(p: VideoProject) -> dict:
         "instagram_caption": _caption_default(p, 2200),
         "facebook_description": _caption_default(p, 5000),
         "linkedin_commentary": _caption_default(p, 3000),
+        "x_text": _short_caption(p, 280),
+        "threads_text": _short_caption(p, 500),
         "title": (script.title if script else p.topic)[:200],
     }
 
@@ -182,6 +209,26 @@ class LinkedInRequest(BaseModel):
         return get_format(v).key
 
 
+class XRequest(BaseModel):
+    format: str = "16:9"
+    text: str = Field(default="", max_length=25000)
+
+    @field_validator("format")
+    @classmethod
+    def _format(cls, v: str) -> str:
+        return get_format(v).key
+
+
+class ThreadsRequest(BaseModel):
+    format: str = "9:16"
+    text: str = Field(default="", max_length=500)
+
+    @field_validator("format")
+    @classmethod
+    def _format(cls, v: str) -> str:
+        return get_format(v).key
+
+
 def _guard(
     db: Session,
     p: VideoProject,
@@ -213,23 +260,23 @@ def _guard(
     return render_file(p, fmt, s)
 
 
+def _write_token(path: Path, token: str) -> None:
+    """Atomically replace a token file, readable only by this user (never the database)."""
+    tmp = path.with_suffix(".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(token)
+    os.replace(tmp, path)
+
+
 def _rotate_writer(s: VideoSettings):
-    """Keep TikTok's rotated refresh token in the token file (never the database)."""
+    """Keep TikTok's rotated refresh token in the token file."""
     if not s.tiktok_token_file:
         return lambda _new: log.warning(
             "TikTok issued a new refresh token; set RB_VIDEO_TIKTOK_TOKEN_FILE to keep it, or "
             "re-authorize before the current one expires."
         )
-
-    def write(new: str) -> None:
-        path = Path(s.tiktok_token_file)
-        tmp = path.with_suffix(".tmp")
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(new)
-        os.replace(tmp, path)
-
-    return write
+    return lambda new: _write_token(Path(s.tiktok_token_file), new)
 
 
 def tiktok_client(s: VideoSettings, http: httpx.Client | None = None) -> clients.TikTok:
@@ -487,6 +534,24 @@ def refresh(db: Session, up: Upload, s: VideoSettings, http: httpx.Client | None
         _refresh_facebook(db, up, s, http)
     elif up.platform == "linkedin":
         _refresh_linkedin(up, s, http)
+    elif up.platform == "x":
+        state, error = x_client(s, http).media_state(up.external_ref)
+        if state == "succeeded":
+            up.status = "ready"
+        elif state == "failed":
+            up.status, up.error = "failed", (error or "X couldn't process the video")[:500]
+    elif up.platform == "threads" and up.external_ref:
+        data = threads_client(s, http).status(up.external_ref)
+        code = data.get("status", "")
+        if code == "FINISHED":
+            up.status = "ready"
+        elif code == "ERROR":
+            up.status = "failed"
+            up.error = str(data.get("error_message") or "Threads couldn't use the video")[:500]
+        elif code == "EXPIRED":
+            up.status = "expired"
+        elif code == "PUBLISHED":
+            up.status = "published"
     up.updated_at = utcnow()
     return up
 
@@ -607,4 +672,211 @@ def publish(
             confirmed=confirmed,
             http=http,
         )
+    if up.platform in ("x", "threads"):
+        fn = publish_x if up.platform == "x" else publish_threads
+        return fn(db, up, s, confirmed_by=confirmed_by, confirmed=confirmed, http=http)
     raise ValueError(f"{name(up.platform)} uploads aren't published from here.")
+
+
+# ---------------------------------------------------------------------- X
+
+
+def x_client(s: VideoSettings, http: httpx.Client | None = None) -> clients.XClient:
+    path = Path(s.x_token_file) if s.x_token_file else None
+    return clients.XClient(
+        s.x_credentials, http, on_rotate=(lambda new: _write_token(path, new)) if path else None
+    )
+
+
+def upload_x(
+    db: Session,
+    p: VideoProject,
+    req: XRequest,
+    s: VideoSettings,
+    *,
+    confirmed_by: str,
+    confirmed: bool,
+    http: httpx.Client | None = None,
+) -> Upload:
+    """Step 1: upload the video to X (not posted). :func:`publish_x` creates the post."""
+    path = _guard(db, p, s, "x", req.format, confirmed_by, confirmed)
+    if len(req.text) > s.x_max_chars:
+        raise ValueError(f"X posts are limited to {s.x_max_chars} characters here.")
+    media_id, state = x_client(s, http).upload(path)
+    up = Upload(
+        project_id=p.id,
+        platform="x",
+        format=req.format,
+        mode="post",
+        status="ready" if state == "succeeded" else "processing",
+        external_ref=media_id,
+        uploaded_by=confirmed_by[:200],
+        meta={"text": req.text},
+    )
+    db.add(up)
+    db.flush()
+    log.info("x media %s for project %s by %s", media_id, p.id, confirmed_by)
+    return up
+
+
+def publish_x(
+    db: Session,
+    up: Upload,
+    s: VideoSettings,
+    *,
+    confirmed_by: str,
+    confirmed: bool,
+    http: httpx.Client | None = None,
+) -> Upload:
+    """Step 2: a person creates the X post. The only function that posts on X."""
+    if up.platform != "x":
+        raise ValueError("Only X uploads are published this way.")
+    if not available(s)["x"]:
+        raise UploadDisabled("X upload is off.")
+    if not confirmed or not confirmed_by.strip():
+        raise ValueError("Confirm that this should be posted on X now.")
+    refresh(db, up, s, http)
+    if up.status != "ready":
+        raise ValueError(
+            {
+                "processing": "X is still processing the video; try again shortly.",
+                "published": "This video is already posted.",
+            }.get(up.status, f"Can't post: {up.error or up.status}.")
+        )
+    post_id = x_client(s, http).post(up.meta.get("text", ""), up.external_ref)
+    up.status, up.published_by, up.privacy = "published", confirmed_by[:200], "public"
+    up.meta = {**up.meta, "post": post_id}
+    _record(db, up, f"https://x.com/i/status/{post_id}")
+    log.info("x post %s by %s", post_id, confirmed_by)
+    return up
+
+
+# ---------------------------------------------------------------------- Threads
+
+MEDIA_LINK_TTL = 3600
+
+
+def _media_sig(secret: str, pid: int, slug: str, expires: int) -> str:
+    msg = f"video-media:{pid}:{slug}:{expires}".encode()
+    return hmac.new(secret.encode(), msg, hashlib.sha256).hexdigest()[:40]
+
+
+def media_link(public_base: str, secret: str, pid: int, fmt: str, expires: int) -> str:
+    slug = get_format(fmt).slug
+    sig = _media_sig(secret, pid, slug, expires)
+    return f"{public_base.rstrip('/')}/video-media/{pid}/{slug}/{expires}/{sig}.mp4"
+
+
+def verify_media_link(secret: str, pid: int, slug: str, expires: int, sig: str) -> bool:
+    if expires < time.time() or expires > time.time() + MEDIA_LINK_TTL + 60:
+        return False
+    return hmac.compare_digest(_media_sig(secret, pid, slug, expires), sig)
+
+
+def public_base_problem(url: str) -> str | None:
+    """Why Meta couldn't fetch videos from this address, or None if it looks public."""
+    parts = urlsplit(url or "")
+    host = (parts.hostname or "").lower()
+    if parts.scheme != "https" or not host:
+        return "Threads needs this site's public https address (RB_VIDEO_PUBLIC_BASE_URL)."
+    if host == "localhost" or host.endswith((".local", ".internal", ".localhost")):
+        return "Threads can't reach a local address; set RB_VIDEO_PUBLIC_BASE_URL."
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return None
+    if not ip.is_global:
+        return "Threads can't reach a private address; set RB_VIDEO_PUBLIC_BASE_URL."
+    return None
+
+
+def threads_client(s: VideoSettings, http: httpx.Client | None = None) -> clients.Threads:
+    return clients.Threads(s.threads_credentials, http)
+
+
+def upload_threads(
+    db: Session,
+    p: VideoProject,
+    req: ThreadsRequest,
+    s: VideoSettings,
+    *,
+    public_base: str,
+    secret: str,
+    confirmed_by: str,
+    confirmed: bool,
+    http: httpx.Client | None = None,
+) -> Upload:
+    """Step 1: Threads fetches the render from a signed link valid for one hour (for this
+    project's render only) into a container. Nothing is public until
+    :func:`publish_threads`."""
+    _guard(db, p, s, "threads", req.format, confirmed_by, confirmed)
+    problem = public_base_problem(public_base)
+    if problem:
+        raise ValueError(problem)
+    expires = int(time.time()) + MEDIA_LINK_TTL
+    cid = threads_client(s, http).create_video(
+        media_link(public_base, secret, p.id, req.format, expires), req.text
+    )
+    up = Upload(
+        project_id=p.id,
+        platform="threads",
+        format=req.format,
+        mode="post",
+        status="processing",
+        external_ref=cid,
+        privacy="public",
+        uploaded_by=confirmed_by[:200],
+        meta={"text": req.text, "media_expires": expires},
+    )
+    db.add(up)
+    db.flush()
+    log.info("threads container %s for project %s by %s", cid, p.id, confirmed_by)
+    return up
+
+
+def media_for_link(db: Session, s: VideoSettings, pid: int, slug: str) -> Path | None:
+    """The render a valid media link points to (approved projects only)."""
+    project = db.get(VideoProject, pid)
+    if project is None or project.status != "approved":
+        return None
+    try:
+        return render_file(project, slug, s)
+    except ValueError:
+        return None
+
+
+def publish_threads(
+    db: Session,
+    up: Upload,
+    s: VideoSettings,
+    *,
+    confirmed_by: str,
+    confirmed: bool,
+    http: httpx.Client | None = None,
+) -> Upload:
+    """Step 2: a person publishes the Threads post. The only function that calls
+    threads_publish."""
+    if up.platform != "threads":
+        raise ValueError("Only Threads uploads are published this way.")
+    if not available(s)["threads"]:
+        raise UploadDisabled("Threads upload is off.")
+    if not confirmed or not confirmed_by.strip():
+        raise ValueError("Confirm that this should be posted on Threads now.")
+    refresh(db, up, s, http)
+    if up.status != "ready":
+        raise ValueError(
+            {
+                "processing": "Threads is still processing the video; try again shortly.",
+                "published": "This video is already posted.",
+                "expired": "The upload expired (24 hours); upload it again.",
+            }.get(up.status, f"Can't post: {up.error or up.status}.")
+        )
+    th = threads_client(s, http)
+    media_id = th.publish(up.external_ref)
+    up.status, up.published_by = "published", confirmed_by[:200]
+    up.meta = {**up.meta, "media_id": media_id}
+    link = th.permalink(media_id)
+    if link:
+        _record(db, up, link)
+    log.info("threads post %s by %s", media_id, confirmed_by)
+    return up

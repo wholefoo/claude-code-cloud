@@ -27,6 +27,8 @@ from redblue.video.templates import FORMATS, TEMPLATES, get_format
 
 templates = make_templates([Path(__file__).parent / "templates", ADMIN_DIR / "templates"])
 router = APIRouter(prefix="/admin/video", include_in_schema=False)
+# Public, unauthenticated: only the short-lived signed Threads media links.
+public_router = APIRouter(include_in_schema=False)
 
 
 def _pipeline(request: Request) -> Pipeline:
@@ -151,10 +153,16 @@ def project(pid: int, request: Request, db: DB, user: Writer) -> HTMLResponse:
         tiktok_mode=vs.tiktok_mode,
         tiktok_opts=_tiktok_options(vs) if _wants_tiktok_options(p, vs, user) else None,
         privacy_labels=social.PRIVACY_LABELS,
+        threads_problem=social.public_base_problem(_public_base(request)),
+        x_max_chars=vs.x_max_chars,
         social_uploads=list(
             db.scalars(select(Upload).where(Upload.project_id == pid).order_by(Upload.id))
         ),
     )
+
+
+def _public_base(request: Request) -> str:
+    return get_video_settings().public_base_url or request.app.state.rb.settings.base_url
 
 
 def _wants_tiktok_options(p: VideoProject, vs, user) -> bool:
@@ -433,6 +441,82 @@ def publish_upload(
     return back(dest, f"Published on {where}{': ' + up.url if up.url else ''}.")
 
 
+@router.post("/projects/{pid:int}/x")
+def upload_x(
+    pid: int,
+    db: DB,
+    user: Writer,
+    format: Annotated[str, Form()] = "16:9",
+    text: Annotated[str, Form()] = "",
+    confirm: Annotated[str, Form()] = "",
+):
+    need(user, Role.editor)
+    p = _project(db, pid)
+    dest = f"/admin/video/projects/{pid}"
+    try:
+        req = social.XRequest(format=format, text=text)
+        social.upload_x(
+            db, p, req, get_video_settings(), confirmed_by=user.email, confirmed=_flag(confirm)
+        )
+    except ValidationError as exc:
+        return back(dest, f"Check the X form: {exc.errors()[0]['msg']}"[:300])
+    except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
+        return back(dest, f"X upload failed: {exc}"[:300])
+    except httpx.HTTPError as exc:
+        return back(dest, f"X upload failed: {exc}"[:300])
+    return back(dest, "Uploaded to X (not posted yet). When it's processed, press Post below.")
+
+
+@router.post("/projects/{pid:int}/threads")
+def upload_threads(
+    pid: int,
+    request: Request,
+    db: DB,
+    user: Writer,
+    format: Annotated[str, Form()] = "9:16",
+    text: Annotated[str, Form()] = "",
+    confirm: Annotated[str, Form()] = "",
+):
+    need(user, Role.editor)
+    p = _project(db, pid)
+    dest = f"/admin/video/projects/{pid}"
+    try:
+        req = social.ThreadsRequest(format=format, text=text)
+        social.upload_threads(
+            db,
+            p,
+            req,
+            get_video_settings(),
+            public_base=_public_base(request),
+            secret=request.app.state.rb.settings.secret_key.get_secret_value(),
+            confirmed_by=user.email,
+            confirmed=_flag(confirm),
+        )
+    except ValidationError as exc:
+        return back(dest, f"Check the Threads form: {exc.errors()[0]['msg']}"[:300])
+    except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
+        return back(dest, f"Threads upload failed: {exc}"[:300])
+    except httpx.HTTPError as exc:
+        return back(dest, f"Threads upload failed: {exc}"[:300])
+    return back(dest, "Sent to Threads (not posted yet). When it's processed, press Post below.")
+
+
+@public_router.get("/video-media/{pid:int}/{slug}/{expires:int}/{sig}.mp4")
+def threads_media(pid: int, slug: str, expires: int, sig: str, request: Request, db: DB):
+    """One approved render, for Meta to fetch for Threads; the signed link lasts an hour."""
+    secret = request.app.state.rb.settings.secret_key.get_secret_value()
+    if not social.verify_media_link(secret, pid, slug, expires, sig):
+        raise HTTPException(404)
+    path = social.media_for_link(db, get_video_settings(), pid, slug)
+    if path is None:
+        raise HTTPException(404)
+    return FileResponse(
+        path,
+        media_type="video/mp4",
+        headers={"Cache-Control": "private, no-store", "X-Robots-Tag": "noindex"},
+    )
+
+
 @router.post("/projects/{pid:int}/facebook")
 def upload_facebook(
     pid: int,
@@ -667,6 +751,7 @@ def video_file(pid: int, db: DB, user: Writer, format: str = ""):
 
 def install_video(app: FastAPI) -> None:
     app.include_router(router)
+    app.include_router(public_router)
     rb = app.state.rb
     rb.extras["video"] = True
 
