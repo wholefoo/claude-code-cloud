@@ -8,6 +8,24 @@ import pytest
 from redblue.video.render import ffmpeg_exe
 
 NOW = "2026-09-27T00:00:00Z"
+TRENDS_RSS = """<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:ht="https://trends.google.com/trending/rss">
+<channel><title>Daily Search Trends</title>
+<item>
+  <title>ai chip</title>
+  <ht:approx_traffic>50,000+</ht:approx_traffic>
+  <pubDate>Sat, 26 Sep 2026 20:00:00 +0000</pubDate>
+  <ht:news_item>
+    <ht:news_item_title>Chip maker unveils faster AI chip</ht:news_item_title>
+    <ht:news_item_url>https://news.example.com/chip</ht:news_item_url>
+  </ht:news_item>
+</item>
+<item>
+  <title>football scores</title>
+  <ht:approx_traffic>2M+</ht:approx_traffic>
+  <pubDate>Sat, 26 Sep 2026 21:00:00 +0000</pubDate>
+</item>
+</channel></rss>"""
 
 
 @pytest.fixture(scope="session")
@@ -47,6 +65,11 @@ def media_files(tmp_path_factory):
         check=True,
     )
     return clip.read_bytes(), voice.read_bytes()
+
+
+def offline():
+    """A client that fails every request (keeps key-less tests off the network)."""
+    return httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(503)))
 
 
 def fake_apis(media_files, calls: list):
@@ -136,6 +159,54 @@ def fake_apis(media_files, calls: list):
             )
         if host == "videos.pexels.com":
             return httpx.Response(200, content=clip)
+        if host == "www.reddit.com" and path == "/api/v1/access_token":
+            assert req.headers["user-agent"].startswith("redblue-video")
+            assert req.headers["authorization"].startswith("Basic ")
+            return httpx.Response(200, json={"access_token": "rd-token", "expires_in": 3600})
+        if host == "oauth.reddit.com":
+            assert req.headers["authorization"] == "Bearer rd-token"
+            sort = path.rsplit("/", 1)[1]
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "children": [
+                            {
+                                "data": {
+                                    "title": "Pinned rules thread",
+                                    "stickied": True,
+                                    "permalink": "/r/hardware/comments/0/rules/",
+                                    "score": 5,
+                                }
+                            },
+                            {
+                                "data": {
+                                    "title": "New AI chip benchmarks leaked",
+                                    "score": 1800,
+                                    "num_comments": 420,
+                                    "created_utc": 1790476800,
+                                    "permalink": f"/r/hardware/comments/1/{sort}/",
+                                    "subreddit": "hardware",
+                                    "upvote_ratio": 0.95,
+                                }
+                            },
+                            {
+                                "data": {
+                                    "title": "NSFW post",
+                                    "over_18": True,
+                                    "score": 10,
+                                    "permalink": "/r/hardware/comments/2/x/",
+                                }
+                            },
+                        ]
+                    }
+                },
+            )
+        if host == "trends.google.com":
+            assert req.url.params["geo"] == "US"
+            return httpx.Response(
+                200, content=TRENDS_RSS.encode(), headers={"content-type": "application/rss+xml"}
+            )
         if host == "api.elevenlabs.io":
             return httpx.Response(200, content=voice)
         return httpx.Response(404)
@@ -169,6 +240,9 @@ def vsettings(tmp_path):
         PEXELS_API_KEY="px-key",
         ELEVENLABS_API_KEY="el-key",
         target_seconds=30,
+        REDDIT_CLIENT_ID="rd-id",
+        REDDIT_CLIENT_SECRET="rd-secret",
+        subreddits=["hardware"],
     )
 
 

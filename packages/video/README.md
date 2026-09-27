@@ -7,9 +7,10 @@ it to a human for review. **Nothing is published automatically.**
 ```
 sweep ──► score ──► brief ──► script ──► assets ──► render ──► review ──► (you upload)
 YouTube    velocity  Tavily     Claude     Pexels     FFmpeg     admin
-Data API   freshness Firecrawl  (cited)    ElevenLabs + captions approval
-Tavily     relevance
-           opportunity
+Tavily     freshness Firecrawl  (cited)    ElevenLabs + captions approval
+Reddit     relevance
+Google     opportunity
+Trends
 ```
 
 ## Quickstart
@@ -17,7 +18,9 @@ Tavily     relevance
 ```bash
 make dev                         # installs redblue-video with the rest of the monorepo
 export RB_VIDEO_NICHE="AI chips" RB_VIDEO_KEYWORDS='["semiconductors","gpu"]'
+export RB_VIDEO_SUBREDDITS='["hardware","technology"]'
 export YOUTUBE_API_KEY=... TAVILY_API_KEY=... FIRECRAWL_API_KEY=...
+export REDDIT_CLIENT_ID=... REDDIT_CLIENT_SECRET=...
 export PEXELS_API_KEY=... ELEVENLABS_API_KEY=... ANTHROPIC_API_KEY=...   # all optional
 redblue video sweep              # fetch + score trends
 redblue video make --trend 12    # research → script → render, then stops for review
@@ -32,18 +35,29 @@ That's useful for testing, and you add keys as you go.
 |---|---|---|
 | `YOUTUBE_API_KEY` | Trending and niche-search video **metadata** (views, velocity) | Tavily-only trends |
 | `TAVILY_API_KEY` | News trend signals and research sources | No sourced facts; write the script by hand |
+| `REDDIT_CLIENT_ID` + `REDDIT_CLIENT_SECRET` (+ `RB_VIDEO_SUBREDDITS`) | Rising/hot post titles, votes and comment counts from your subreddits (official API; create an app at reddit.com/prefs/apps) | No Reddit signals |
+| *(none)* | **Google Trends** "Trending now" searches for `RB_VIDEO_GOOGLE_TRENDS_GEO` (default: `RB_VIDEO_REGION`) via Google's public RSS feed | Always on |
 | `FIRECRAWL_API_KEY` | Full-text extraction of the top sources | Tavily snippets only |
 | `PEXELS_API_KEY` | Licensed stock footage per beat | Brand-colour backgrounds |
 | `ELEVENLABS_API_KEY` | AI narration | Silent video with captions |
 | `ANTHROPIC_API_KEY` | Brief and script writing (structured, cited) | Deterministic templates |
 
-Settings (`RB_VIDEO_*`): `NICHE`, `KEYWORDS` (JSON list), `REGION`, `OUTPUT_DIR`,
-`TARGET_SECONDS`, `WIDTH`/`HEIGHT` (default 1080×1920), `VOICE_ID`.
+Settings (`RB_VIDEO_*`): `NICHE`, `KEYWORDS` (JSON list), `REGION`, `SUBREDDITS` (JSON list),
+`GOOGLE_TRENDS_GEO`, `REDDIT_USER_AGENT`, `OUTPUT_DIR`, `TARGET_SECONDS`, `WIDTH`/`HEIGHT`
+(default 1080×1920), `VOICE_ID`.
+
+### How sources are compared
+
+Each trend's *reach* is views (YouTube), approximate searches (Google Trends), or, for Reddit,
+an estimate of `(upvotes + 2 × comments) × 40` viewers. Velocity is reach per hour on a log
+scale. Relevance to your niche and keywords also gates the total score, so a viral search
+about something else (say, football scores) ranks below a smaller trend in your niche.
 
 ## Guardrails (built in)
 
-- **No footage scraping.** YouTube/TikTok/Instagram are read only through official APIs
-  (metadata). Firecrawl refuses video-platform URLs, and clip downloads are limited to Pexels
+- **No footage scraping.** YouTube/TikTok/Instagram and Reddit are read only through
+  official APIs (titles and counts); Google Trends through its public feed. Firecrawl
+  refuses video-platform URLs, and clip downloads are limited to Pexels
   hosts. Scripts are original; transcripts and other creators' videos are never reused.
 - **Cited facts.** Brief facts must cite a fetched source. A script beat that states a
   number without a source, or cites a missing one, blocks rendering until a human fixes it.
@@ -65,5 +79,4 @@ later: `render.render()` is the only function to replace.
 ## Next steps (not in the MVP)
 
 Whisper word-level caption timing, multiple templates and aspect ratios, performance
-tracking from platform analytics to tune scoring, Reddit/Google Trends signals, and optional
-direct upload after approval.
+tracking from platform analytics to tune scoring, and optional direct upload after approval.

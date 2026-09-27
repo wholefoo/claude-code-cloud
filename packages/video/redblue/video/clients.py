@@ -4,10 +4,13 @@ nothing here downloads other creators' videos."""
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
-from urllib.parse import urlsplit
+from email.utils import parsedate_to_datetime
+from urllib.parse import quote, urlsplit
 
 import httpx
+from defusedxml import ElementTree
 
 from redblue.video.schemas import Source, TrendSignal
 
@@ -106,6 +109,154 @@ class YouTubeTrends:
                 if i.get("id", {}).get("videoId")
             ]
         )
+
+
+class Reddit:
+    """Reddit Data API, application-only OAuth (register a "script"/"web" app at
+    reddit.com/prefs/apps). Reads post titles, scores and comment counts only; post bodies
+    and media are never fetched or reused."""
+
+    TOKEN_URL = "https://www.reddit.com/api/v1/access_token"  # noqa: S105  # nosec B105
+    API = "https://oauth.reddit.com"
+    _SUB = re.compile(r"^[A-Za-z0-9_]{2,21}$")
+
+    def __init__(
+        self,
+        credentials: tuple[str, str] | None,
+        user_agent: str,
+        client: httpx.Client | None = None,
+    ):
+        if not credentials:
+            raise MissingKey("Set REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET to read Reddit.")
+        self.credentials, self.http = credentials, _client(client)
+        self.headers = {"User-Agent": user_agent}
+        self._token: str | None = None
+
+    def _auth(self) -> dict:
+        if self._token is None:
+            r = self.http.post(
+                self.TOKEN_URL,
+                auth=self.credentials,
+                headers=self.headers,
+                data={"grant_type": "client_credentials"},
+            )
+            r.raise_for_status()
+            self._token = r.json()["access_token"]
+        return {**self.headers, "Authorization": f"Bearer {self._token}"}
+
+    def listing(self, subreddit: str, sort: str = "hot", limit: int = 15) -> list[TrendSignal]:
+        if not self._SUB.match(subreddit) or sort not in ("hot", "rising", "top", "new"):
+            raise ValueError(f"Invalid subreddit or sort: r/{subreddit} {sort}")
+        r = self.http.get(
+            f"{self.API}/r/{subreddit}/{sort}",
+            headers=self._auth(),
+            params={"limit": min(limit, 50), "raw_json": 1},
+        )
+        r.raise_for_status()
+        out = []
+        for child in r.json().get("data", {}).get("children", []):
+            d = child.get("data", {})
+            if d.get("stickied") or d.get("over_18"):
+                continue
+            created = d.get("created_utc")
+            out.append(
+                TrendSignal(
+                    source="reddit",
+                    title=(d.get("title") or "")[:500],
+                    url=f"https://www.reddit.com{d.get('permalink', '')}",
+                    topic=(d.get("title") or "")[:300],
+                    published_at=datetime.fromtimestamp(created, UTC) if created else None,
+                    likes=int(d.get("score") or 0),
+                    comments=int(d.get("num_comments") or 0),
+                    snippet=(d.get("link_flair_text") or "")[:200],
+                    extra={
+                        "subreddit": d.get("subreddit"),
+                        "upvote_ratio": d.get("upvote_ratio"),
+                        "domain": d.get("domain"),
+                    },
+                )
+            )
+        return out
+
+    def trend_signals(self, subreddits: list[str], limit: int = 15) -> list[TrendSignal]:
+        seen, out = set(), []
+        for sub in subreddits:
+            for sort in ("rising", "hot"):
+                for sig in self.listing(sub, sort, limit):
+                    if sig.url not in seen:
+                        seen.add(sig.url)
+                        out.append(sig)
+        return out
+
+
+class GoogleTrends:
+    """Google Trends "Trending now" RSS feed (public, no key). Each item is a rising search
+    with approximate volume and related news headlines."""
+
+    URL = "https://trends.google.com/trending/rss"
+    NS = {"ht": "https://trends.google.com/trending/rss"}
+
+    def __init__(self, client: httpx.Client | None = None):
+        self.http = _client(client)
+
+    def trending(self, geo: str = "US", limit: int = 20) -> list[TrendSignal]:
+        if not re.fullmatch(r"[A-Z]{2}(-[A-Z0-9]{1,3})?", geo):
+            raise ValueError(f"Invalid geo code: {geo}")
+        r = self.http.get(self.URL, params={"geo": geo})
+        r.raise_for_status()
+        root = ElementTree.fromstring(r.content)  # defusedxml: no entity expansion / XXE
+        out = []
+        for item in root.iter("item"):
+            query = (item.findtext("title") or "").strip()
+            if not query:
+                continue
+            published = None
+            if item.findtext("pubDate"):
+                try:
+                    published = parsedate_to_datetime(item.findtext("pubDate"))
+                except (TypeError, ValueError):
+                    published = None
+            traffic = item.findtext("ht:approx_traffic", default="", namespaces=self.NS)
+            news = [
+                {
+                    "title": (
+                        n.findtext("ht:news_item_title", default="", namespaces=self.NS) or ""
+                    ).strip(),
+                    "url": (
+                        n.findtext("ht:news_item_url", default="", namespaces=self.NS) or ""
+                    ).strip(),
+                }
+                for n in item.findall("ht:news_item", self.NS)
+            ]
+            day = (published or datetime.now(UTC)).date().isoformat()
+            out.append(
+                TrendSignal(
+                    source="google_trends",
+                    title=query[:500],
+                    topic=query[:300],
+                    url=f"https://trends.google.com/trends/explore?q={quote(query)}&geo={geo}"
+                    f"#{day}",
+                    published_at=published,
+                    views=_parse_traffic(traffic),
+                    snippet=" · ".join(n["title"] for n in news if n["title"])[:500],
+                    extra={"approx_traffic": traffic, "news": news[:5], "geo": geo},
+                )
+            )
+            if len(out) >= limit:
+                break
+        return out
+
+
+def _parse_traffic(text: str) -> int | None:
+    """'50,000+' → 50000, '2K+' → 2000, '1M+' → 1000000."""
+    m = re.match(r"\s*([\d.,]+)\s*([KkMm]?)", text or "")
+    if not m:
+        return None
+    try:
+        n = float(m.group(1).replace(",", ""))
+    except ValueError:
+        return None
+    return int(n * {"k": 1_000, "m": 1_000_000}.get(m.group(2).lower(), 1))
 
 
 class Tavily:

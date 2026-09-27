@@ -1,6 +1,9 @@
 """Trend scoring: velocity, freshness, niche relevance and how crowded the topic is.
 
-Scores are 0–100 with a breakdown so humans can see *why* a trend ranks where it does."""
+Scores are 0–100 with a breakdown so humans can see *why* a trend ranks where it does.
+Reach is views (YouTube), searches (Google Trends) or an estimate from votes and comments
+(Reddit), so different sources rank on one scale. Relevance also gates the total, keeping
+viral but off-niche items below on-niche ones."""
 
 from __future__ import annotations
 
@@ -18,20 +21,43 @@ STOP = set(
 )
 
 
+def _stem(word: str) -> str:
+    """Fold simple plurals so "chip" matches "chips" (not "ss" words like "glass")."""
+    if len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
+        return word[:-1]
+    return word
+
+
 def tokens(text: str) -> set[str]:
-    return {w for w in re.findall(r"[a-z0-9]{3,}", text.lower()) if w not in STOP}
+    # Two-letter tokens are kept: "ai", "ev", "5g" are often the whole point of a niche.
+    return {_stem(w) for w in re.findall(r"[a-z0-9]{2,}", text.lower()) if w not in STOP}
 
 
 def _aware(dt: datetime) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
+# Reddit reports votes and comments, not views. Roughly one visible interaction per ~40
+# viewers is a common rule of thumb; comments signal more engagement than a vote.
+REDDIT_VIEWS_PER_INTERACTION = 40
+
+
+def reach(sig: TrendSignal) -> int | None:
+    """Views (YouTube), searches (Google Trends) or an equivalent estimate (Reddit)."""
+    if sig.views:
+        return sig.views
+    if sig.source == "reddit" and (sig.likes or sig.comments):
+        return ((sig.likes or 0) + 2 * (sig.comments or 0)) * REDDIT_VIEWS_PER_INTERACTION
+    return None
+
+
 def velocity(sig: TrendSignal, now: datetime) -> float:
-    """Views per hour on a log scale: 100/h ≈ 0.4, 10k/h ≈ 0.8, 100k/h+ ≈ 1."""
-    if not sig.views or not sig.published_at:
-        return 0.5 if sig.source != "youtube" else 0.0  # news items: neutral
+    """Reach per hour on a log scale: 100/h ≈ 0.4, 10k/h ≈ 0.8, 100k/h+ ≈ 1."""
+    views = reach(sig)
+    if not views or not sig.published_at:
+        return 0.5 if sig.source == "tavily" else 0.0  # news items: neutral
     hours = max(1.0, (now - _aware(sig.published_at)).total_seconds() / 3600)
-    return max(0.0, min(1.0, math.log10(sig.views / hours + 1) / 5))
+    return max(0.0, min(1.0, math.log10(views / hours + 1) / 5))
 
 
 def freshness(sig: TrendSignal, now: datetime, half_life_h: float = 36) -> float:
@@ -75,6 +101,9 @@ def score_all(
             "relevance": relevance(s, niche, keywords),
             "opportunity": opportunity(s, crowd),
         }
-        total = round(100 * sum(WEIGHTS[k] * v for k, v in parts.items()), 1)
+        # Relevance also gates the whole score: an off-niche item, however viral, reaches at
+        # most 40% of the score an equally strong on-niche item would get.
+        base = sum(WEIGHTS[k] * v for k, v in parts.items())
+        total = round(100 * base * (0.4 + 0.6 * parts["relevance"]), 1)
         out.append((s, total, {k: round(v, 3) for k, v in parts.items()}))
     return sorted(out, key=lambda x: -x[1])
