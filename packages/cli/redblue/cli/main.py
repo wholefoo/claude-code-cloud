@@ -452,6 +452,7 @@ def video_upload(
         ..., "--made-for-kids/--not-made-for-kids", help="Required: YouTube audience setting"
     ),
     title: str = typer.Option("", help="Defaults to the script title"),
+    short: bool = typer.Option(False, "--short", help="Publish as a YouTube Short (adds #Shorts)"),
 ):
     """Upload an approved render to YouTube. Always asks you to confirm; there is no --yes."""
     import getpass
@@ -477,8 +478,11 @@ def video_upload(
                 privacy=privacy,
                 made_for_kids=made_for_kids,
                 category_id=d["category_id"],
+                shorts=short,
             )
             path = uploads.render_file(p, req.format, pipe.s)
+            if short:
+                req = uploads.as_short(req, path)
         except ValueError as exc:
             raise typer.BadParameter(str(exc)) from None
         typer.secho(f"Title:   {req.title}", bold=True)
@@ -1101,6 +1105,62 @@ def video_bluesky(
 def video_bluesky_publish(upload: int = typer.Argument(..., help="Upload id")):
     """Post an uploaded video on Bluesky. Always asks you to confirm."""
     _social_step2("bluesky", upload)
+
+
+@video_app.command("tumblr")
+def video_tumblr(
+    project: int = typer.Argument(..., help="Approved project id"),
+    fmt: str = typer.Option("9:16", "--format", "-f", help="Which render to upload"),
+    state: str = typer.Option("draft", help="draft (default), private or published"),
+):
+    """Post an approved render to Tumblr (a draft unless you choose otherwise)."""
+    import getpass
+
+    import httpx
+
+    from redblue.video import upload_social as social
+    from redblue.video.models import VideoProject
+
+    pipe = _video()
+    _need_person()
+    with pipe.platform.db.session() as s:
+        p = s.get(VideoProject, project)
+        if p is None:
+            raise typer.BadParameter(f"No project #{project}")
+        d = social.defaults(p)
+        try:
+            req = social.TumblrRequest(
+                format=fmt, caption=d["tumblr_caption"], tags=d["tumblr_tags"], state=state
+            )
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from None
+        confirmed = typer.confirm(
+            f"I watched this render and have the rights to it. Post it as {req.state}?"
+        )
+        public_ok = req.state != "published" or typer.confirm(
+            "It will be PUBLIC on the blog right away. Continue?"
+        )
+        if not (confirmed and public_ok):
+            raise typer.Abort()
+        try:
+            up = social.upload_tumblr(
+                s,
+                p,
+                req,
+                pipe.s,
+                confirmed_by=f"cli:{getpass.getuser()}",
+                confirmed=confirmed,
+                confirmed_public=public_ok,
+            )
+        except (
+            ValueError,
+            social.UploadDisabled,
+            social.clients.PlatformError,
+            httpx.HTTPError,
+        ) as exc:
+            typer.secho(f"Upload failed: {exc}", fg="red")
+            raise typer.Exit(1) from None
+        typer.echo(f"Tumblr post #{up.external_ref} ({up.mode}) {up.url or ''}")
 
 
 if __name__ == "__main__":

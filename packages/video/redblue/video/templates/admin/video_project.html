@@ -84,6 +84,7 @@
         <label class="rb-check"><input type="radio" name="made_for_kids" value="no" required> No</label>
         <label class="rb-check"><input type="radio" name="made_for_kids" value="yes"> Yes</label>
       </fieldset>
+      <label class="rb-check"><input type="checkbox" name="shorts" value="1"{% if renders and renders[0].height >= renders[0].width %} checked{% endif %}> Publish as a YouTube Short (9:16, 4:5 or 1:1, up to 3 minutes; adds #Shorts)</label>
       <label class="rb-check"><input type="checkbox" name="synthetic_media" value="1"{% if upload_defaults.synthetic_media %} checked{% endif %}> Disclose altered or synthetic content (AI voice)</label>
       <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> I watched this render, checked its facts and have the rights to everything in it</label>
       <label class="rb-check"><input type="checkbox" name="confirm_public" value="1"> If public: make it visible to everyone as soon as it's uploaded</label>
@@ -210,6 +211,25 @@
     </form>
   {% endif %}
   </section>
+  <section class="rb-card"><h2>Upload to Tumblr</h2>
+  {% if not social.tumblr %}
+    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code>, the Tumblr credentials and <code>RB_VIDEO_TUMBLR_BLOG</code> (see the video README), or upload the download yourself.</p>
+  {% else %}
+    <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/tumblr"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if r.key == "9:16" %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
+      <label>Caption <textarea name="caption" rows="4" maxlength="4096">{{ social_defaults.tumblr_caption }}</textarea></label>
+      <label>Tags (comma-separated) <input name="tags" value="{{ social_defaults.tumblr_tags }}"></label>
+      <fieldset><legend>Post as</legend>
+        <label class="rb-check"><input type="radio" name="state" value="draft" checked> Draft (publish it yourself from Tumblr)</label>
+        <label class="rb-check"><input type="radio" name="state" value="private"> Private (only you)</label>
+        <label class="rb-check"><input type="radio" name="state" value="published"> Published</label>
+      </fieldset>
+      <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> I watched this render, checked its facts and have the rights to everything in it</label>
+      <label class="rb-check"><input type="checkbox" name="confirm_public" value="1"> If published: it will be public on the blog right away</label>
+      <button class="rb-btn rb-btn--primary">Upload to Tumblr</button>
+    </form>
+  {% endif %}
+  </section>
   <section class="rb-card"><h2>Upload to Pinterest</h2>
   {% if not social.pinterest %}
     <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code>, the Pinterest credentials and <code>RB_VIDEO_PINTEREST_BOARD_ID</code> (see the video README), or upload the download yourself.</p>
@@ -251,7 +271,7 @@
       {% if up.url %}<br><a href="{{ up.url }}" rel="noopener noreferrer" target="_blank">{{ up.url }}</a>{% endif %}
       {% if up.error %}<br><span class="rb-error">{{ up.error }}</span>{% endif %}
       {% if up.status == "in_inbox" %}<br>Finish it in the TikTok app, then record the post's URL under Published.{% endif %}
-      {% if up.status == "draft" %}<br>Saved as a draft on your Page: publish it in Meta Business Suite. Check status afterwards to link it.{% endif %}</p>
+      {% if up.status == "draft" %}<br>{% if up.platform == "tumblr" %}Saved as a Tumblr draft: publish it from your Tumblr drafts.{% else %}Saved as a draft on your Page: publish it in Meta Business Suite.{% endif %} Check status afterwards to link it.{% endif %}</p>
       {% if up.status in ("processing", "in_inbox", "ready", "draft") %}
       <form method="post" action="/admin/video/uploads/{{ up.id }}/refresh"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rb-btn">Check status</button></form>
       {% endif %}

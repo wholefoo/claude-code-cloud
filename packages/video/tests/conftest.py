@@ -214,6 +214,16 @@ def fake_apis(media_files, calls: list):
     return httpx.Client(transport=httpx.MockTransport(handler))
 
 
+@pytest.fixture(autouse=True)
+def _fresh_rate_limits():
+    """The login rate limit is process-wide; many admin-flow tests would trip it."""
+    from redblue.core.security import limiter
+
+    limiter.reset()
+    yield
+    limiter.reset()
+
+
 @pytest.fixture
 def platform(tmp_path):
     from redblue.core.app import build_platform
