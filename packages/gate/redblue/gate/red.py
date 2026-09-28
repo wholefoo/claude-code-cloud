@@ -76,13 +76,11 @@ def plan(config: GateConfig, changed: list[str] | None) -> ScanPlan:
     ]
     if code:
         chosen |= {"builtin_sast", "bandit", "semgrep"}
-        reasons.append(f"{len(code)} Python file(s) changed → SAST")
-        if any(
-            "route" in f or "api" in f or "app" in f or "main" in f or "views" in f for f in code
-        ):
-            chosen |= {"dast", "zap", "nuclei"}
-            dast |= {"headers", "reflection", "redirect"}
-            reasons.append("routing code changed → DAST")
+        # Any Python file can add or change a route (routers, dependencies, middleware,
+        # helpers they call), so a code change always probes the preview too.
+        chosen |= {"dast", "zap", "nuclei"}
+        dast |= {"headers", "reflection", "redirect"}
+        reasons.append(f"{len(code)} Python file(s) changed → SAST + DAST on the preview")
     if templates:
         chosen |= {"builtin_sast", "dast"}
         dast |= {"reflection", "headers"}

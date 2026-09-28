@@ -36,6 +36,12 @@ class SemgrepScanner:
             ) from exc
         if proc.returncode not in (0, 1) and not data.get("results"):
             raise ScannerUnavailable(f"semgrep failed: {(proc.stderr or '')[-300:]}")
+        scanned = len((data.get("paths") or {}).get("scanned") or [])
+        errors = len(data.get("errors") or [])
+        ctx.notes.append(
+            f"semgrep: {scanned} file(s) scanned"
+            + (f", {errors} file(s) or rule(s) could not be analyzed" if errors else "")
+        )
         out = []
         for r in data.get("results", []):
             extra = r.get("extra", {})
