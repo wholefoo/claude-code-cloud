@@ -315,7 +315,16 @@ def test_only_configured_platforms_get_a_card(tmp_path, monkeypatch):
     assert "Vimeo:" not in page.split("<h2>Other platforms</h2>")[1]
     assert "· sent" not in page
 
-    c.post(f"{url}/vimeo", data={"csrf_token": tok, "confirm": "1", "title": "Heat"})
+    # A failed upload comes back with its card open (and scrolled to), message intact.
+    r = c.post(f"{url}/vimeo", data={"csrf_token": tok, "confirm": "1", "privacy": "anybody"})
+    location = r.history[0].headers["location"]
+    assert location.startswith(f"{url}?open=vimeo&msg=") and location.endswith("#upload-vimeo")
+    assert '<details class="rb-card rb-upload" id="upload-vimeo" open>' in r.text
+    assert "Confirm that other people" in r.text
+    assert 'id="upload-vimeo" open' not in c.get(f"{url}?open=bogus").text
+
+    r = c.post(f"{url}/vimeo", data={"csrf_token": tok, "confirm": "1", "title": "Heat"})
+    assert "open=" not in r.history[0].headers["location"]  # success: cards stay closed
     page = c.get(url).text
     assert '<h2>Upload to Vimeo</h2> <span class="rb-muted">· sent</span>' in page
     vconfig.get_video_settings.cache_clear()

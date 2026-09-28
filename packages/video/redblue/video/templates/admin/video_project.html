@@ -65,7 +65,7 @@
   {% endif %}
   {% if project.status == "approved" and renders %}
   {% if upload_enabled %}
-  <details class="rb-card rb-upload" id="upload-youtube"><summary><h2>Upload to YouTube</h2>{% if "youtube" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
+  <details class="rb-card rb-upload" id="upload-youtube"{% if open_upload == "youtube" %} open{% endif %}><summary><h2>Upload to YouTube</h2>{% if "youtube" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
   {% if not user.has_role(Role.editor) %}
     <p class="rb-muted">An editor can upload this video.</p>
   {% else %}
@@ -96,7 +96,7 @@
   {% endif %}
   {% if project.status == "approved" and renders and user.has_role(Role.editor) %}
   {% if social.tiktok %}
-  <details class="rb-card rb-upload" id="upload-tiktok"><summary><h2>Upload to TikTok</h2>{% if "tiktok" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
+  <details class="rb-card rb-upload" id="upload-tiktok"{% if open_upload == "tiktok" %} open{% endif %}><summary><h2>Upload to TikTok</h2>{% if "tiktok" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
   {% if tiktok_mode == "direct" and tiktok_opts and tiktok_opts.error %}
     <p class="rb-error" role="alert">Couldn't load your TikTok account settings: {{ tiktok_opts.error }}</p>
   {% else %}
@@ -129,7 +129,7 @@
   </details>
   {% endif %}
   {% if social.instagram %}
-  <details class="rb-card rb-upload" id="upload-instagram"><summary><h2>Upload to Instagram</h2>{% if "instagram" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
+  <details class="rb-card rb-upload" id="upload-instagram"{% if open_upload == "instagram" %} open{% endif %}><summary><h2>Upload to Instagram</h2>{% if "instagram" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/instagram"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if r.key == "9:16" %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
       <label>Caption <textarea name="caption" rows="4" maxlength="2200">{{ social_defaults.instagram_caption }}</textarea></label>
@@ -141,7 +141,7 @@
   </details>
   {% endif %}
   {% if social.facebook %}
-  <details class="rb-card rb-upload" id="upload-facebook"><summary><h2>Upload to Facebook</h2>{% if "facebook" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
+  <details class="rb-card rb-upload" id="upload-facebook"{% if open_upload == "facebook" %} open{% endif %}><summary><h2>Upload to Facebook</h2>{% if "facebook" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/facebook"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if r.key == "9:16" %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
       <label>Title <input name="title" maxlength="255" value="{{ social_defaults.title }}"></label>
@@ -157,7 +157,7 @@
   </details>
   {% endif %}
   {% if social.linkedin %}
-  <details class="rb-card rb-upload" id="upload-linkedin"><summary><h2>Upload to LinkedIn</h2>{% if "linkedin" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
+  <details class="rb-card rb-upload" id="upload-linkedin"{% if open_upload == "linkedin" %} open{% endif %}><summary><h2>Upload to LinkedIn</h2>{% if "linkedin" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/linkedin"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if loop.first %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
       <label>Video title <input name="title" maxlength="200" value="{{ social_defaults.title }}"></label>
@@ -169,7 +169,7 @@
   </details>
   {% endif %}
   {% if social.x %}
-  <details class="rb-card rb-upload" id="upload-x"><summary><h2>Upload to X</h2>{% if "x" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
+  <details class="rb-card rb-upload" id="upload-x"{% if open_upload == "x" %} open{% endif %}><summary><h2>Upload to X</h2>{% if "x" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/x"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if loop.first %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
       <label>Post text <textarea name="text" rows="3" maxlength="{{ x_max_chars }}">{{ social_defaults.x_text }}</textarea></label>
@@ -180,7 +180,7 @@
   </details>
   {% endif %}
   {% if social.reddit %}
-  <details class="rb-card rb-upload" id="upload-reddit"><summary><h2>Upload to Reddit</h2>{% if "reddit" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
+  <details class="rb-card rb-upload" id="upload-reddit"{% if open_upload == "reddit" %} open{% endif %}><summary><h2>Upload to Reddit</h2>{% if "reddit" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/reddit"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if r.key == "9:16" %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
       <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> I watched this render, checked its facts and have the rights to everything in it</label>
@@ -190,7 +190,7 @@
   </details>
   {% endif %}
   {% if social.bluesky %}
-  <details class="rb-card rb-upload" id="upload-bluesky"><summary><h2>Upload to Bluesky</h2>{% if "bluesky" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
+  <details class="rb-card rb-upload" id="upload-bluesky"{% if open_upload == "bluesky" %} open{% endif %}><summary><h2>Upload to Bluesky</h2>{% if "bluesky" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/bluesky"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if r.key == "9:16" %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
       <label>Post text <textarea name="text" rows="3" maxlength="300">{{ social_defaults.bluesky_text }}</textarea></label>
@@ -200,7 +200,7 @@
   </details>
   {% endif %}
   {% if social.tumblr %}
-  <details class="rb-card rb-upload" id="upload-tumblr"><summary><h2>Upload to Tumblr</h2>{% if "tumblr" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
+  <details class="rb-card rb-upload" id="upload-tumblr"{% if open_upload == "tumblr" %} open{% endif %}><summary><h2>Upload to Tumblr</h2>{% if "tumblr" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/tumblr"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if r.key == "9:16" %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
       <label>Caption <textarea name="caption" rows="4" maxlength="4096">{{ social_defaults.tumblr_caption }}</textarea></label>
@@ -217,7 +217,7 @@
   </details>
   {% endif %}
   {% if social.vimeo %}
-  <details class="rb-card rb-upload" id="upload-vimeo"><summary><h2>Upload to Vimeo</h2>{% if "vimeo" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
+  <details class="rb-card rb-upload" id="upload-vimeo"{% if open_upload == "vimeo" %} open{% endif %}><summary><h2>Upload to Vimeo</h2>{% if "vimeo" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/vimeo"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if loop.first %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
       <label>Title <input name="title" maxlength="128" value="{{ social_defaults.title[:128] }}"></label>
@@ -234,7 +234,7 @@
   </details>
   {% endif %}
   {% if social.dailymotion %}
-  <details class="rb-card rb-upload" id="upload-dailymotion"><summary><h2>Upload to Dailymotion</h2>{% if "dailymotion" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
+  <details class="rb-card rb-upload" id="upload-dailymotion"{% if open_upload == "dailymotion" %} open{% endif %}><summary><h2>Upload to Dailymotion</h2>{% if "dailymotion" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/dailymotion"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if loop.first %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
       <label>Title <input name="title" maxlength="255" value="{{ social_defaults.title[:255] }}"></label>
@@ -253,7 +253,7 @@
   </details>
   {% endif %}
   {% if social.rumble %}
-  <details class="rb-card rb-upload" id="upload-rumble"><summary><h2>Upload to Rumble</h2>{% if "rumble" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
+  <details class="rb-card rb-upload" id="upload-rumble"{% if open_upload == "rumble" %} open{% endif %}><summary><h2>Upload to Rumble</h2>{% if "rumble" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/rumble"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if loop.first %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
       <label>Title <input name="title" maxlength="200" value="{{ social_defaults.title[:200] }}"></label>
@@ -269,7 +269,7 @@
   </details>
   {% endif %}
   {% if social.pinterest %}
-  <details class="rb-card rb-upload" id="upload-pinterest"><summary><h2>Upload to Pinterest</h2>{% if "pinterest" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
+  <details class="rb-card rb-upload" id="upload-pinterest"{% if open_upload == "pinterest" %} open{% endif %}><summary><h2>Upload to Pinterest</h2>{% if "pinterest" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/pinterest"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if r.key == "9:16" %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
       <label>Title <input name="title" maxlength="100" value="{{ social_defaults.title[:100] }}"></label>
@@ -283,7 +283,7 @@
   </details>
   {% endif %}
   {% if social.threads %}
-  <details class="rb-card rb-upload" id="upload-threads"><summary><h2>Upload to Threads</h2>{% if "threads" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
+  <details class="rb-card rb-upload" id="upload-threads"{% if open_upload == "threads" %} open{% endif %}><summary><h2>Upload to Threads</h2>{% if "threads" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
   {% if threads_problem %}
     <p class="rb-muted">{{ threads_problem }} Threads fetches the video from this site through a signed link that expires in an hour.</p>
   {% else %}

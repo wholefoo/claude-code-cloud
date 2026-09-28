@@ -169,3 +169,14 @@ def test_growth_audit_and_report(admin_client):
 
 def csrf(client):
     return client.cookies["rb_csrf"]
+
+
+def test_back_only_redirects_within_the_site():
+    from redblue.admin.app import back
+
+    ok = back("/admin/video/projects/3?open=vimeo#upload-vimeo", "Vimeo upload failed: x")
+    assert ok.headers["location"] == (
+        "/admin/video/projects/3?open=vimeo&msg=Vimeo%20upload%20failed%3A%20x#upload-vimeo"
+    )
+    for target in ("https://evil.example/x", "//evil.example/x", "/\\evil.example", "admin"):
+        assert back(target, "hi").headers["location"] == "/admin"
