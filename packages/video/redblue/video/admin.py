@@ -131,6 +131,7 @@ def project(pid: int, request: Request, db: DB, user: Writer) -> HTMLResponse:
     ]
     uploaded = {r["key"] for r in renders if uploads.already_uploaded(db, p, r["key"]) is not None}
     ready = social.available(vs)
+    reopen = request.query_params.get("open")  # the card a failed upload came back to
     social_uploads = list(
         db.scalars(select(Upload).where(Upload.project_id == pid).order_by(Upload.id))
     )
@@ -159,6 +160,7 @@ def project(pid: int, request: Request, db: DB, user: Writer) -> HTMLResponse:
         threads_problem=social.public_base_problem(_public_base(request)),
         x_max_chars=vs.x_max_chars,
         social_uploads=social_uploads,
+        open_upload=reopen if reopen in social.SETUP else None,
         sent_platforms={u.platform for u in social_uploads if u.status not in ("failed", "expired")}
         | ({"youtube"} if uploaded else set()),
         not_set_up=[
@@ -281,8 +283,9 @@ def upload_video(
     need(user, Role.editor)
     p = _project(db, pid)
     dest = f"/admin/video/projects/{pid}"
+    failed = _reopen(dest, "youtube")
     if made_for_kids not in ("yes", "no"):
-        return back(dest, 'Answer "Made for kids?" before uploading.')
+        return back(failed, 'Answer "Made for kids?" before uploading.')
     vs = get_video_settings()
     try:
         req = uploads.UploadRequest(
@@ -306,10 +309,15 @@ def upload_video(
             confirmed_public=bool(confirm_public),
         )
     except ValidationError as exc:
-        return back(dest, f"Check the upload form: {exc.errors()[0]['msg']}"[:300])
+        return back(failed, f"Check the upload form: {exc.errors()[0]['msg']}"[:300])
     except (ValueError, uploads.UploadDisabled, httpx.HTTPError) as exc:
-        return back(dest, f"Upload failed: {exc}"[:300])
+        return back(failed, f"Upload failed: {exc}"[:300])
     return back(dest, f"Uploaded to YouTube as {pub.privacy}: {pub.url}")
+
+
+def _reopen(dest: str, platform: str) -> str:
+    """Where a failed upload goes back to: the project page with that card open."""
+    return f"{dest}?open={platform}#upload-{platform}"
 
 
 def _flag(value: str) -> bool:
@@ -336,6 +344,7 @@ def upload_tiktok(
     need(user, Role.editor)
     p = _project(db, pid)
     dest = f"/admin/video/projects/{pid}"
+    failed = _reopen(dest, "tiktok")
     vs = get_video_settings()
     try:
         req = social.TikTokRequest(
@@ -359,11 +368,11 @@ def upload_tiktok(
             confirmed_public=_flag(confirm_public),
         )
     except ValidationError as exc:
-        return back(dest, f"Check the TikTok form: {exc.errors()[0]['msg']}"[:300])
+        return back(failed, f"Check the TikTok form: {exc.errors()[0]['msg']}"[:300])
     except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
-        return back(dest, f"TikTok upload failed: {exc}"[:300])
+        return back(failed, f"TikTok upload failed: {exc}"[:300])
     except httpx.HTTPError as exc:
-        return back(dest, f"TikTok upload failed: {exc}"[:300])
+        return back(failed, f"TikTok upload failed: {exc}"[:300])
     msg = (
         "Sent to TikTok. Open the TikTok app (inbox notification) to finish and post it."
         if up.mode == "inbox"
@@ -385,6 +394,7 @@ def upload_instagram(
     need(user, Role.editor)
     p = _project(db, pid)
     dest = f"/admin/video/projects/{pid}"
+    failed = _reopen(dest, "instagram")
     try:
         req = social.InstagramRequest(
             format=format, caption=caption, share_to_feed=_flag(share_to_feed)
@@ -393,11 +403,11 @@ def upload_instagram(
             db, p, req, get_video_settings(), confirmed_by=user.email, confirmed=_flag(confirm)
         )
     except ValidationError as exc:
-        return back(dest, f"Check the Instagram form: {exc.errors()[0]['msg']}"[:300])
+        return back(failed, f"Check the Instagram form: {exc.errors()[0]['msg']}"[:300])
     except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
-        return back(dest, f"Instagram upload failed: {exc}"[:300])
+        return back(failed, f"Instagram upload failed: {exc}"[:300])
     except httpx.HTTPError as exc:
-        return back(dest, f"Instagram upload failed: {exc}"[:300])
+        return back(failed, f"Instagram upload failed: {exc}"[:300])
     return back(
         dest,
         "Uploaded to Instagram (not public yet). When it's processed, press Publish below.",
@@ -469,17 +479,18 @@ def upload_x(
     need(user, Role.editor)
     p = _project(db, pid)
     dest = f"/admin/video/projects/{pid}"
+    failed = _reopen(dest, "x")
     try:
         req = social.XRequest(format=format, text=text)
         social.upload_x(
             db, p, req, get_video_settings(), confirmed_by=user.email, confirmed=_flag(confirm)
         )
     except ValidationError as exc:
-        return back(dest, f"Check the X form: {exc.errors()[0]['msg']}"[:300])
+        return back(failed, f"Check the X form: {exc.errors()[0]['msg']}"[:300])
     except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
-        return back(dest, f"X upload failed: {exc}"[:300])
+        return back(failed, f"X upload failed: {exc}"[:300])
     except httpx.HTTPError as exc:
-        return back(dest, f"X upload failed: {exc}"[:300])
+        return back(failed, f"X upload failed: {exc}"[:300])
     return back(dest, "Uploaded to X (not posted yet). When it's processed, press Post below.")
 
 
@@ -494,14 +505,15 @@ def upload_reddit(
     need(user, Role.editor)
     p = _project(db, pid)
     dest = f"/admin/video/projects/{pid}"
+    failed = _reopen(dest, "reddit")
     try:
         social.upload_reddit(
             db, p, format, get_video_settings(), confirmed_by=user.email, confirmed=_flag(confirm)
         )
     except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
-        return back(dest, f"Reddit upload failed: {exc}"[:300])
+        return back(failed, f"Reddit upload failed: {exc}"[:300])
     except httpx.HTTPError as exc:
-        return back(dest, f"Reddit upload failed: {exc}"[:300])
+        return back(failed, f"Reddit upload failed: {exc}"[:300])
     return back(dest, "Uploaded to Reddit (not posted yet). Choose a subreddit below to post it.")
 
 
@@ -517,17 +529,18 @@ def upload_bluesky(
     need(user, Role.editor)
     p = _project(db, pid)
     dest = f"/admin/video/projects/{pid}"
+    failed = _reopen(dest, "bluesky")
     try:
         req = social.BlueskyRequest(format=format, text=text)
         social.upload_bluesky(
             db, p, req, get_video_settings(), confirmed_by=user.email, confirmed=_flag(confirm)
         )
     except ValidationError as exc:
-        return back(dest, f"Check the Bluesky form: {exc.errors()[0]['msg']}"[:300])
+        return back(failed, f"Check the Bluesky form: {exc.errors()[0]['msg']}"[:300])
     except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
-        return back(dest, f"Bluesky upload failed: {exc}"[:300])
+        return back(failed, f"Bluesky upload failed: {exc}"[:300])
     except httpx.HTTPError as exc:
-        return back(dest, f"Bluesky upload failed: {exc}"[:300])
+        return back(failed, f"Bluesky upload failed: {exc}"[:300])
     return back(
         dest, "Uploaded to Bluesky (not posted yet). When it's processed, press Post below."
     )
@@ -548,6 +561,7 @@ def upload_tumblr(
     need(user, Role.editor)
     p = _project(db, pid)
     dest = f"/admin/video/projects/{pid}"
+    failed = _reopen(dest, "tumblr")
     try:
         req = social.TumblrRequest(format=format, caption=caption, tags=tags, state=state)
         up = social.upload_tumblr(
@@ -560,11 +574,11 @@ def upload_tumblr(
             confirmed_public=_flag(confirm_public),
         )
     except ValidationError as exc:
-        return back(dest, f"Check the Tumblr form: {exc.errors()[0]['msg']}"[:300])
+        return back(failed, f"Check the Tumblr form: {exc.errors()[0]['msg']}"[:300])
     except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
-        return back(dest, f"Tumblr upload failed: {exc}"[:300])
+        return back(failed, f"Tumblr upload failed: {exc}"[:300])
     except httpx.HTTPError as exc:
-        return back(dest, f"Tumblr upload failed: {exc}"[:300])
+        return back(failed, f"Tumblr upload failed: {exc}"[:300])
     messages = {
         "draft": "Saved as a Tumblr draft. Publish it from your Tumblr drafts.",
         "private": "Posted privately on Tumblr (only you can see it).",
@@ -588,6 +602,7 @@ def upload_vimeo(
     need(user, Role.editor)
     p = _project(db, pid)
     dest = f"/admin/video/projects/{pid}"
+    failed = _reopen(dest, "vimeo")
     try:
         req = social.VimeoRequest(
             format=format, title=title, description=description, privacy=privacy
@@ -602,11 +617,11 @@ def upload_vimeo(
             confirmed_public=_flag(confirm_public),
         )
     except ValidationError as exc:
-        return back(dest, f"Check the Vimeo form: {exc.errors()[0]['msg']}"[:300])
+        return back(failed, f"Check the Vimeo form: {exc.errors()[0]['msg']}"[:300])
     except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
-        return back(dest, f"Vimeo upload failed: {exc}"[:300])
+        return back(failed, f"Vimeo upload failed: {exc}"[:300])
     except httpx.HTTPError as exc:
-        return back(dest, f"Vimeo upload failed: {exc}"[:300])
+        return back(failed, f"Vimeo upload failed: {exc}"[:300])
     return back(dest, "Uploaded to Vimeo; it's transcoding. Check status in a minute.")
 
 
@@ -627,6 +642,7 @@ def upload_dailymotion(
     need(user, Role.editor)
     p = _project(db, pid)
     dest = f"/admin/video/projects/{pid}"
+    failed = _reopen(dest, "dailymotion")
     try:
         req = social.DailymotionRequest(
             format=format,
@@ -646,11 +662,11 @@ def upload_dailymotion(
             confirmed_public=_flag(confirm_public),
         )
     except ValidationError as exc:
-        return back(dest, f"Check the Dailymotion form: {exc.errors()[0]['msg']}"[:300])
+        return back(failed, f"Check the Dailymotion form: {exc.errors()[0]['msg']}"[:300])
     except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
-        return back(dest, f"Dailymotion upload failed: {exc}"[:300])
+        return back(failed, f"Dailymotion upload failed: {exc}"[:300])
     except httpx.HTTPError as exc:
-        return back(dest, f"Dailymotion upload failed: {exc}"[:300])
+        return back(failed, f"Dailymotion upload failed: {exc}"[:300])
     return back(dest, "Uploaded to Dailymotion; it's encoding. Check status in a few minutes.")
 
 
@@ -669,6 +685,7 @@ def upload_rumble(
     need(user, Role.editor)
     p = _project(db, pid)
     dest = f"/admin/video/projects/{pid}"
+    failed = _reopen(dest, "rumble")
     try:
         req = social.RumbleRequest(
             format=format, title=title, description=description, license=license
@@ -683,11 +700,11 @@ def upload_rumble(
             confirmed_public=_flag(confirm_public),
         )
     except ValidationError as exc:
-        return back(dest, f"Check the Rumble form: {exc.errors()[0]['msg']}"[:300])
+        return back(failed, f"Check the Rumble form: {exc.errors()[0]['msg']}"[:300])
     except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
-        return back(dest, f"Rumble upload failed: {exc}"[:300])
+        return back(failed, f"Rumble upload failed: {exc}"[:300])
     except httpx.HTTPError as exc:
-        return back(dest, f"Rumble upload failed: {exc}"[:300])
+        return back(failed, f"Rumble upload failed: {exc}"[:300])
     return back(dest, f"Published on Rumble: {up.url or 'link not returned yet'}")
 
 
@@ -706,6 +723,7 @@ def upload_pinterest(
     need(user, Role.editor)
     p = _project(db, pid)
     dest = f"/admin/video/projects/{pid}"
+    failed = _reopen(dest, "pinterest")
     try:
         req = social.PinterestRequest(
             format=format, title=title, description=description, alt_text=alt_text, link=link
@@ -714,11 +732,11 @@ def upload_pinterest(
             db, p, req, get_video_settings(), confirmed_by=user.email, confirmed=_flag(confirm)
         )
     except ValidationError as exc:
-        return back(dest, f"Check the Pinterest form: {exc.errors()[0]['msg']}"[:300])
+        return back(failed, f"Check the Pinterest form: {exc.errors()[0]['msg']}"[:300])
     except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
-        return back(dest, f"Pinterest upload failed: {exc}"[:300])
+        return back(failed, f"Pinterest upload failed: {exc}"[:300])
     except httpx.HTTPError as exc:
-        return back(dest, f"Pinterest upload failed: {exc}"[:300])
+        return back(failed, f"Pinterest upload failed: {exc}"[:300])
     return back(
         dest, "Uploaded to Pinterest (not pinned yet). When it's processed, press Pin below."
     )
@@ -737,6 +755,7 @@ def upload_threads(
     need(user, Role.editor)
     p = _project(db, pid)
     dest = f"/admin/video/projects/{pid}"
+    failed = _reopen(dest, "threads")
     try:
         req = social.ThreadsRequest(format=format, text=text)
         social.upload_threads(
@@ -750,11 +769,11 @@ def upload_threads(
             confirmed=_flag(confirm),
         )
     except ValidationError as exc:
-        return back(dest, f"Check the Threads form: {exc.errors()[0]['msg']}"[:300])
+        return back(failed, f"Check the Threads form: {exc.errors()[0]['msg']}"[:300])
     except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
-        return back(dest, f"Threads upload failed: {exc}"[:300])
+        return back(failed, f"Threads upload failed: {exc}"[:300])
     except httpx.HTTPError as exc:
-        return back(dest, f"Threads upload failed: {exc}"[:300])
+        return back(failed, f"Threads upload failed: {exc}"[:300])
     return back(dest, "Sent to Threads (not posted yet). When it's processed, press Post below.")
 
 
@@ -789,6 +808,7 @@ def upload_facebook(
     need(user, Role.editor)
     p = _project(db, pid)
     dest = f"/admin/video/projects/{pid}"
+    failed = _reopen(dest, "facebook")
     try:
         req = social.FacebookRequest(
             format=format, title=title, description=description, publish_now=_flag(publish_now)
@@ -803,11 +823,11 @@ def upload_facebook(
             confirmed_public=_flag(confirm_public),
         )
     except ValidationError as exc:
-        return back(dest, f"Check the Facebook form: {exc.errors()[0]['msg']}"[:300])
+        return back(failed, f"Check the Facebook form: {exc.errors()[0]['msg']}"[:300])
     except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
-        return back(dest, f"Facebook upload failed: {exc}"[:300])
+        return back(failed, f"Facebook upload failed: {exc}"[:300])
     except httpx.HTTPError as exc:
-        return back(dest, f"Facebook upload failed: {exc}"[:300])
+        return back(failed, f"Facebook upload failed: {exc}"[:300])
     if up.mode == "draft":
         return back(dest, "Saved as a draft Reel on your Page. Publish it in Meta Business Suite.")
     return back(dest, "Sent to your Page; Facebook is processing it. Check status shortly.")
@@ -826,17 +846,18 @@ def upload_linkedin(
     need(user, Role.editor)
     p = _project(db, pid)
     dest = f"/admin/video/projects/{pid}"
+    failed = _reopen(dest, "linkedin")
     try:
         req = social.LinkedInRequest(format=format, title=title, commentary=commentary)
         social.upload_linkedin(
             db, p, req, get_video_settings(), confirmed_by=user.email, confirmed=_flag(confirm)
         )
     except ValidationError as exc:
-        return back(dest, f"Check the LinkedIn form: {exc.errors()[0]['msg']}"[:300])
+        return back(failed, f"Check the LinkedIn form: {exc.errors()[0]['msg']}"[:300])
     except (ValueError, uploads.UploadDisabled, social.clients.PlatformError) as exc:
-        return back(dest, f"LinkedIn upload failed: {exc}"[:300])
+        return back(failed, f"LinkedIn upload failed: {exc}"[:300])
     except httpx.HTTPError as exc:
-        return back(dest, f"LinkedIn upload failed: {exc}"[:300])
+        return back(failed, f"LinkedIn upload failed: {exc}"[:300])
     return back(
         dest, "Uploaded to LinkedIn (not posted yet). When it's processed, press Post below."
     )

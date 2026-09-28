@@ -82,8 +82,10 @@ def render(request: Request, name: str, user: User | None, **ctx) -> HTMLRespons
 def back(path: str, msg: str = "") -> RedirectResponse:
     from urllib.parse import quote
 
+    path, _, fragment = path.partition("#")
     sep = "&" if "?" in path else "?"
-    return RedirectResponse(path + (f"{sep}msg={quote(msg)}" if msg else ""), status_code=303)
+    url = path + (f"{sep}msg={quote(msg)}" if msg else "") + (f"#{fragment}" if fragment else "")
+    return RedirectResponse(url, status_code=303)
 
 
 def _lines(text: str) -> list[str]:
