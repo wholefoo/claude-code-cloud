@@ -3,7 +3,7 @@
 {% block main %}
 <p><a href="/admin/video">← Video</a></p>
 <div class="rb-row"><h1>Performance</h1>
-<form method="post" action="/admin/video/performance/track"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rb-btn rb-btn--primary">Fetch YouTube stats now</button></form></div>
+<form method="post" action="/admin/video/performance/track"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rb-btn rb-btn--primary">Fetch stats now</button></form></div>
 <p class="rb-muted">Videos are compared by views at {{ r.window_hours }} hours old, against your median on the same platform ("lift"). YouTube numbers are fetched every 6 hours{% if not youtube_key %} once <code>YOUTUBE_API_KEY</code> is set{% endif %}{% if youtube_oauth %}, with retention from YouTube Analytics{% endif %}. For other platforms, enter numbers on the project page or import a CSV.</p>
 
 <div class="rb-two">

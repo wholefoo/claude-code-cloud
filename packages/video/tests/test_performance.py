@@ -159,9 +159,10 @@ def test_track_merges_public_counts_and_analytics(platform, vsettings):
         db.add(p)
         db.flush()
         pub = perf.record(db, p, "https://youtu.be/dQw4w9WgXcQ")
-        perf.record(db, p, "https://www.tiktok.com/@me/video/1")  # not fetched: no API
+        perf.record(db, p, "https://www.tiktok.com/@me/video/1")  # no TikTok credentials
         res = Pipeline(platform, s, _youtube_api(calls)).track(db)
-        assert res.updated == 1 and res.notes == []
+        assert res.updated == 1 and len(res.notes) == 1
+        assert res.notes[0].startswith("TikTok: 1 recent video(s); set TIKTOK_CLIENT_KEY")
         snap = db.query(MetricSnapshot).one()
         assert (snap.views, snap.likes, snap.comments, snap.shares) == (5400, 300, 12, 40)
         assert snap.avg_view_pct == 83.2 and snap.avg_view_seconds == 21.5

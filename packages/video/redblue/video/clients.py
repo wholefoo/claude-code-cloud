@@ -275,6 +275,23 @@ def _https_host(url: str, suffixes: tuple[str, ...]) -> str:
     return url
 
 
+def insight_values(body: dict) -> dict[str, int]:
+    """Meta-style insights (``data: [{name, values: [{value}]}]`` or ``total_value``) as
+    ``{name: number}``; dict values (per-reaction counts) are summed."""
+    out: dict[str, int] = {}
+    for row in body.get("data") or []:
+        if not isinstance(row, dict) or not row.get("name"):
+            continue
+        value = (row.get("total_value") or {}).get("value")
+        if value is None and row.get("values"):
+            value = (row["values"][-1] or {}).get("value")
+        if isinstance(value, dict):
+            value = sum(v for v in value.values() if isinstance(v, int | float))
+        if isinstance(value, int | float) and value >= 0:
+            out[str(row["name"])] = int(value)
+    return out
+
+
 class TikTok:
     """TikTok Content Posting API. ``inbox`` uploads land in the creator's TikTok drafts
     (scope ``video.upload``); ``direct`` posts (scope ``video.publish``). Only called from
@@ -382,6 +399,32 @@ class TikTok:
     def status(self, publish_id: str) -> dict:
         return self._post("status/fetch/", {"publish_id": publish_id})
 
+    def video_stats(self, video_ids: list[str]) -> dict[str, dict]:
+        """Counts for your own videos (scope ``video.list``), 20 ids per request."""
+        out: dict[str, dict] = {}
+        fields = "id,view_count,like_count,comment_count,share_count"
+        for i in range(0, len(video_ids), 20):
+            r = self.http.post(
+                "https://open.tiktokapis.com/v2/video/query/",
+                params={"fields": fields},
+                headers={**self._auth(), "Content-Type": "application/json; charset=UTF-8"},
+                json={"filters": {"video_ids": video_ids[i : i + 20]}},
+            )
+            body = r.json() if r.content else {}
+            err = body.get("error") or {}
+            if r.status_code >= 400 or err.get("code") not in (None, "ok"):
+                raise PlatformError(
+                    f"TikTok: {err.get('message') or err.get('code') or r.status_code}"
+                )
+            for v in (body.get("data") or {}).get("videos") or []:
+                out[str(v.get("id"))] = {
+                    "views": v.get("view_count"),
+                    "likes": v.get("like_count"),
+                    "comments": v.get("comment_count"),
+                    "shares": v.get("share_count"),
+                }
+        return out
+
 
 class Instagram:
     """Instagram Graph API Reels publishing: a resumable-upload container first (not
@@ -473,6 +516,37 @@ class Instagram:
         )
         return self._json(r).get("permalink")
 
+    def recent_media(self, pages: int = 4) -> dict[str, str]:
+        """``{permalink: media id}`` for your most recent posts (to match recorded links)."""
+        out: dict[str, str] = {}
+        url, params = f"{self.base}/{self.user_id}/media", {"fields": "id,permalink", "limit": 50}
+        for _ in range(pages):
+            body = self._json(self.http.get(url, headers=self._auth, params=params))
+            for m in body.get("data") or []:
+                if m.get("permalink") and m.get("id"):
+                    out[str(m["permalink"])] = str(m["id"])
+            after = ((body.get("paging") or {}).get("cursors") or {}).get("after")
+            if not after or not (body.get("paging") or {}).get("next"):
+                break
+            params = {**params, "after": after}
+        return out
+
+    def media_stats(self, media_id: str) -> dict:
+        if not re.fullmatch(r"\d{1,30}", media_id):
+            raise ValueError("Invalid media id.")
+        r = self.http.get(
+            f"{self.base}/{media_id}/insights",
+            headers=self._auth,
+            params={"metric": "views,likes,comments,shares,saved"},
+        )
+        v = insight_values(self._json(r))
+        return {
+            "views": v.get("views"),
+            "likes": v.get("likes"),
+            "comments": v.get("comments"),
+            "shares": v.get("shares"),
+        }
+
 
 class FacebookPage:
     """Facebook Page Reels (Graph API ``video_reels``): start, transfer, finish. Finishing
@@ -549,6 +623,22 @@ class FacebookPage:
             f"{self.base}/{video_id}", headers=self._auth, params={"fields": "status"}
         )
         return self._json(r).get("status") or {}
+
+    def video_stats(self, video_id: str) -> dict:
+        """Reel/video insights (Page token with ``read_insights``); default metric set."""
+        if not re.fullmatch(r"\d{1,30}", video_id):
+            raise ValueError("Invalid Facebook video id.")
+        r = self.http.get(f"{self.base}/{video_id}/video_insights", headers=self._auth)
+        v = insight_values(self._json(r))
+        views = next(
+            (
+                v[k]
+                for k in ("blue_reels_play_count", "fb_reels_total_plays", "total_video_views")
+                if k in v
+            ),
+            None,
+        )
+        return {"views": views, "likes": v.get("post_video_likes_by_reaction_type")}
 
 
 def little_text(text: str) -> str:
@@ -774,6 +864,25 @@ class XClient:
             raise PlatformError("X didn't return the post id.")
         return post_id
 
+    def post_stats(self, post_ids: list[str]) -> dict[str, dict]:
+        """Public counts for posts (X bills each read), 100 ids per request."""
+        out: dict[str, dict] = {}
+        for i in range(0, len(post_ids), 100):
+            r = self.http.get(
+                f"{self.API}/tweets",
+                headers=self._auth(),
+                params={"ids": ",".join(post_ids[i : i + 100]), "tweet.fields": "public_metrics"},
+            )
+            for t in self._json(r).get("data") or []:
+                m = t.get("public_metrics") or {}
+                out[str(t.get("id"))] = {
+                    "views": m.get("impression_count"),
+                    "likes": m.get("like_count"),
+                    "comments": m.get("reply_count"),
+                    "shares": (m.get("retweet_count") or 0) + (m.get("quote_count") or 0),
+                }
+        return out
+
 
 class Threads:
     """Threads API video posts: a container that Meta fills by fetching ``video_url`` (a
@@ -835,6 +944,37 @@ class Threads:
             f"{self.BASE}/{media_id}", headers=self._auth, params={"fields": "permalink"}
         )
         return self._json(r).get("permalink")
+
+    def recent_media(self, pages: int = 4) -> dict[str, str]:
+        """``{permalink: media id}`` for your most recent posts (to match recorded links)."""
+        out: dict[str, str] = {}
+        url, params = f"{self.BASE}/{self.user_id}/threads", {"fields": "id,permalink", "limit": 50}
+        for _ in range(pages):
+            body = self._json(self.http.get(url, headers=self._auth, params=params))
+            for m in body.get("data") or []:
+                if m.get("permalink") and m.get("id"):
+                    out[str(m["permalink"])] = str(m["id"])
+            after = ((body.get("paging") or {}).get("cursors") or {}).get("after")
+            if not after or not (body.get("paging") or {}).get("next"):
+                break
+            params = {**params, "after": after}
+        return out
+
+    def media_stats(self, media_id: str) -> dict:
+        if not re.fullmatch(r"\d{1,30}", media_id):
+            raise ValueError("Invalid media id.")
+        r = self.http.get(
+            f"{self.BASE}/{media_id}/insights",
+            headers=self._auth,
+            params={"metric": "views,likes,replies,reposts,quotes,shares"},
+        )
+        v = insight_values(self._json(r))
+        return {
+            "views": v.get("views"),
+            "likes": v.get("likes"),
+            "comments": v.get("replies"),
+            "shares": sum(v.get(k) or 0 for k in ("reposts", "quotes", "shares")),
+        }
 
 
 class Pinterest:
@@ -935,6 +1075,25 @@ class Pinterest:
         if not re.fullmatch(r"\d{1,40}", pin_id):
             raise PlatformError("Pinterest didn't return the Pin id.")
         return pin_id
+
+    def pin_stats(self, pin_id: str, since) -> dict:
+        """Video views on your own Pin since ``since`` (Pinterest keeps 90 days)."""
+        if not re.fullmatch(r"\d{1,30}", pin_id):
+            raise ValueError("Invalid Pin id.")
+        end = datetime.now(UTC).date()
+        start = max(since, end - timedelta(days=89))
+        r = self.http.get(
+            f"{self.base}/v5/pins/{pin_id}/analytics",
+            headers=self._auth(),
+            params={
+                "start_date": start.isoformat(),
+                "end_date": end.isoformat(),
+                "metric_types": "VIDEO_MRC_VIEW,IMPRESSION,SAVE",
+            },
+        )
+        summary = (self._json(r).get("all") or {}).get("summary_metrics") or {}
+        views = summary.get("VIDEO_MRC_VIEW")
+        return {"views": int(views) if isinstance(views, int | float) else None}
 
 
 class RedditPoster:
@@ -1347,6 +1506,23 @@ class Vimeo:
         )
         return self._json(r)
 
+    def video_stats(self, video_id: str) -> dict:
+        r = self.http.get(
+            f"{self.API}/videos/{video_id}",
+            headers=self._headers,
+            params={
+                "fields": "stats.plays,metadata.connections.likes.total,"
+                "metadata.connections.comments.total"
+            },
+        )
+        body = self._json(r)
+        conns = (body.get("metadata") or {}).get("connections") or {}
+        return {
+            "views": (body.get("stats") or {}).get("plays"),
+            "likes": (conns.get("likes") or {}).get("total"),
+            "comments": (conns.get("comments") or {}).get("total"),
+        }
+
 
 class Dailymotion:
     """Dailymotion Partner API with a private API key (client credentials, scope
@@ -1455,6 +1631,17 @@ class Dailymotion:
             params={"fields": "id,status,published,private,url"},
         )
         return self._json(r)
+
+    def video_stats(self, video_id: str) -> dict:
+        if not self._XID.match(video_id):
+            raise ValueError("Invalid Dailymotion video id.")
+        r = self.http.get(
+            f"{self.API}/video/{video_id}",
+            headers=self._auth(),
+            params={"fields": "views_total,likes_total"},
+        )
+        body = self._json(r)
+        return {"views": body.get("views_total"), "likes": body.get("likes_total")}
 
 
 class Rumble:

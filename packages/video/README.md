@@ -64,7 +64,7 @@ That's useful for testing, and you add keys as you go.
 Settings (`RB_VIDEO_*`): `NICHE`, `KEYWORDS` (JSON list), `REGION`, `SUBREDDITS` (JSON list),
 `GOOGLE_TRENDS_GEO`, `REDDIT_USER_AGENT`, `OUTPUT_DIR`, `TARGET_SECONDS`, `TEMPLATE`
 (default `bold`), `FORMATS` (JSON list, default `["9:16"]`), `VOICE_ID`, `CAPTIONS`
-(`whisper` or `even`), `WHISPER_MODEL`, `PERF_WINDOW_HOURS` (default 72), `TRACK_DAYS`
+(`whisper` or `even`), `WHISPER_MODEL`, `PERF_WINDOW_HOURS` (default 72), `X_STATS` (default false), `TRACK_DAYS`
 (default 30), `LEARN_FROM_PERFORMANCE` (default true), `LEARN_MIN_VIDEOS` (default 5),
 `SCORE_WEIGHTS` (JSON object, e.g. `{"velocity": 0.2, "relevance": 0.45}`), `UPLOAD_ENABLED`
 (default false), `UPLOAD_CATEGORY_ID` (default 28, Science & Technology), `TIKTOK_MODE`
@@ -89,8 +89,10 @@ about something else (say, football scores) ranks below a smaller trend in your 
   official APIs (titles and counts); Google Trends through its public feed. Firecrawl
   refuses video-platform URLs, and clip downloads are limited to Pexels
   hosts. Scripts are original; transcripts and other creators' videos are never reused.
-- **Read-only analytics.** Performance tracking reads your own videos' numbers; the YouTube
-  Analytics token is read-only, and nothing is ever posted.
+- **Read-only analytics.** Performance tracking reads your own videos' numbers (YouTube and,
+  with their credentials, TikTok, Instagram, Facebook, Threads, Pinterest, Vimeo,
+  Dailymotion and opt-in X); the YouTube Analytics token is read-only, and nothing is ever
+  posted.
 - **Cited facts.** Brief facts must cite a fetched source. A script beat that states a
   number without a source, or cites a missing one, blocks rendering until a human fixes it.
 - **Untrusted input.** Scraped pages are fenced before they reach the model, so text like
@@ -166,8 +168,29 @@ recorded on several platforms, one entry per URL.
 
 | Platform | How numbers arrive |
 |---|---|
-| YouTube | Fetched every 6 hours (and with `redblue video track` or **Fetch YouTube stats now**): views, likes and comments via `YOUTUBE_API_KEY`; with the optional OAuth settings, also shares and retention (average % viewed) from YouTube Analytics |
-| TikTok, Instagram, Facebook, LinkedIn, X, other | Type them in on the project page, or import a CSV (admin **Performance** page or `redblue video import-stats file.csv`) |
+| YouTube | Fetched every 6 hours (and with `redblue video track` or **Fetch stats now**): views, likes and comments via `YOUTUBE_API_KEY`; with the optional OAuth settings, also shares and retention (average % viewed) from YouTube Analytics |
+| TikTok, Instagram, Facebook, Threads, Pinterest, Vimeo, Dailymotion | Fetched on the same schedule with the credentials you set for uploading (see below). Missing credentials are named in the tracking notes |
+| X | Same, but only with `RB_VIDEO_X_STATS=true`: X bills each read |
+| Reddit, Bluesky, Tumblr, LinkedIn, Rumble, Snapchat, Twitch, other | Type them in on the project page, or import a CSV (admin **Performance** page or `redblue video import-stats file.csv`). Reddit, Bluesky and Tumblr don't report views; the others have no suitable API |
+
+**Automatic numbers from other platforms.** Each run reads your own recent posts (within
+`RB_VIDEO_TRACK_DAYS`, 30 by default) with read-only requests. The token needs a read
+permission besides the upload one:
+
+| Platform | Read permission | What's stored |
+|---|---|---|
+| TikTok | scope `video.list` | views, likes, comments, shares |
+| Instagram | `instagram_manage_insights` (Facebook login) or `instagram_business_manage_insights` (Instagram login) | views, likes, comments, shares |
+| Facebook | `read_insights` on the Page token | Reel plays, reactions |
+| Threads | `threads_manage_insights` | views, likes, replies, reposts + quotes + shares |
+| Pinterest | `pins:read` | video views (Pinterest keeps 90 days) |
+| Vimeo | the upload token | plays (hidden on some plans), likes, comments |
+| Dailymotion | the upload key | views, likes |
+| X (opt-in) | `tweet.read` | impressions, likes, replies, reposts + quotes |
+
+Instagram and Threads links are matched to your 200 most recent posts to find their ids,
+once per video. If a platform refuses, the notes after **Fetch stats now** (or in
+`redblue video track`) say why, and the other platforms still update.
 
 The CSV needs `url` and `views` columns; `likes`, `comments`, `shares`, `avg_view_pct` and
 `date` are optional, and common export headers ("Video views", "Average percentage viewed")

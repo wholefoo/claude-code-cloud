@@ -29,6 +29,7 @@ class VideoSettings(BaseSettings):
     # Performance tracking (see performance.py)
     perf_window_hours: int = 72  # compare videos by views at this age
     track_days: int = 30  # keep fetching stats for publications this recent
+    x_stats: bool = False  # X bills each read, so fetching X numbers is opt-in
     learn_from_performance: bool = True  # nudge trend scores by your track record
     learn_min_videos: int = 5  # ...once this many videos have mature stats
     score_weights: dict[str, float] = Field(default_factory=dict)  # override scoring.WEIGHTS
