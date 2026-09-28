@@ -144,7 +144,7 @@ def add_snapshot(
     pub: Publication,
     *,
     source: str,
-    views: int,
+    views: int | None,
     likes: int | None = None,
     comments: int | None = None,
     shares: int | None = None,
@@ -152,6 +152,7 @@ def add_snapshot(
     avg_view_seconds: float | None = None,
     taken_at: datetime | None = None,
 ) -> MetricSnapshot:
+    no_views = views is None  # the platform reports likes/comments but no views
     counts = (views, likes, comments, shares, avg_view_seconds)
     if any(v is not None and v < 0 for v in counts):
         raise ValueError("Counts can't be negative.")
@@ -161,12 +162,13 @@ def add_snapshot(
         publication_id=pub.id,
         source=source[:20],
         taken_at=_naive(taken_at) if taken_at else utcnow(),
-        views=int(views),
+        views=0 if no_views else int(views),
         likes=likes,
         comments=comments,
         shares=shares,
         avg_view_pct=avg_view_pct,
         avg_view_seconds=avg_view_seconds,
+        no_views=True if no_views else None,
     )
     db.add(snap)
     db.flush()
@@ -328,7 +330,9 @@ def views_at(pub: Publication, snaps: list[MetricSnapshot], hours: float) -> flo
     """Views at ``hours`` after publishing, interpolated between snapshots; None until a
     snapshot at least that old exists (the video isn't mature yet)."""
     points = [(0.0, 0.0)] + sorted(
-        ((s.taken_at - pub.published_at).total_seconds() / 3600, float(s.views)) for s in snaps
+        ((s.taken_at - pub.published_at).total_seconds() / 3600, float(s.views))
+        for s in snaps
+        if not s.no_views
     )
     if points[-1][0] < hours:
         return None
@@ -353,7 +357,7 @@ class PubRow:
     @property
     def engagement(self) -> float | None:
         s = self.latest
-        if not s or not s.views:
+        if not s or s.no_views or not s.views:
             return None
         return ((s.likes or 0) + 2 * (s.comments or 0) + 3 * (s.shares or 0)) / s.views
 

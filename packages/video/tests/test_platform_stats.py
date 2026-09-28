@@ -84,7 +84,9 @@ class FakePlatforms:
     def handler(self, req: httpx.Request) -> httpx.Response:
         self.calls.append(req)
         host, path = req.url.host, req.url.path
-        if path.endswith(("/oauth/token/", "/oauth/token", "/oauth2/token", "/oauth/v1/token")):
+        if path.endswith(
+            ("/oauth/token/", "/oauth/token", "/oauth2/token", "/oauth/v1/token", "/access_token")
+        ):
             return httpx.Response(200, json={"access_token": f"{host}-at"})
         if host in self.fail:
             return httpx.Response(400, json={"error": {"message": "Unsupported get request"}})
@@ -172,6 +174,23 @@ class FakePlatforms:
             }
             data = [{"id": req.url.params["ids"], "public_metrics": metrics}]
             return httpx.Response(200, json={"data": data})
+        if host == "oauth.reddit.com" and path == "/api/info":
+            assert req.url.params["id"] == "t3_1abcde"
+            post = {"id": "1abcde", "score": 321, "num_comments": 45, "num_crossposts": 2}
+            return httpx.Response(200, json={"data": {"children": [{"data": post}]}})
+        if host == "public.api.bsky.app":
+            assert "authorization" not in req.headers  # public read, no login
+            if path.endswith("identity.resolveHandle"):
+                assert req.url.params["handle"] == "me.bsky.social"
+                return httpx.Response(200, json={"did": "did:plc:" + "a" * 24})
+            if path.endswith("feed.getPosts"):
+                uri = "at://did:plc:" + "a" * 24 + "/app.bsky.feed.post/3kabcdefghij2"
+                assert req.url.params.get_list("uris") == [uri]
+                counts = {"likeCount": 18, "replyCount": 4, "repostCount": 3, "quoteCount": 1}
+                return httpx.Response(200, json={"posts": [{"uri": uri, **counts}]})
+        if host == "api.tumblr.com" and path == "/v2/blog/myblog/posts":
+            assert req.url.params["id"] == "765432100"
+            return httpx.Response(200, json={"response": {"posts": [{"note_count": 57}]}})
         return httpx.Response(404, json={"error": {"message": f"unexpected {req.url}"}})
 
     def client(self) -> httpx.Client:
@@ -211,12 +230,62 @@ def test_x_is_opt_in_and_missing_credentials_are_explained(platform, vsettings, 
         p = VideoProject(topic="u", status="approved")
         db.add(p)
         db.flush()
-        perf.record(db, p, "https://www.reddit.com/r/energy/comments/abc/heat/")  # no views
-        res = stats.track(db, s, fake.client())
+        perf.record(db, p, "https://www.reddit.com/r/energy/comments/abc/heat/")
+        res = stats.track(db, s.model_copy(update={"reddit_client_id": None}), fake.client())
     assert res.updated == 1  # Dailymotion only
     assert any(n.startswith("Vimeo: 1 recent video(s); set VIMEO_ACCESS_TOKEN") for n in res.notes)
     assert any("RB_VIDEO_X_STATS=true" in n for n in res.notes)
-    assert len(res.notes) == 2 and not any(r.url.host == "api.x.com" for r in fake.calls)
+    assert any(n.startswith("Reddit: 1 recent video(s); set REDDIT_CLIENT_ID") for n in res.notes)
+    assert len(res.notes) == 3 and not any(r.url.host == "api.x.com" for r in fake.calls)
+
+
+NO_VIEW_URLS = {
+    "reddit": "https://www.reddit.com/r/energy/comments/1abcde/heat_pumps/",
+    "bluesky": "https://bsky.app/profile/me.bsky.social/post/3kabcdefghij2",
+    "tumblr": "https://www.tumblr.com/myblog/765432100/heat-pumps",
+}
+
+
+def test_platforms_without_views_store_engagement_only(platform, vsettings, tmp_path):
+    s = _settings(
+        vsettings,
+        tmp_path,
+        tumblr_client_id="tc",
+        tumblr_client_secret=SecretStr("ts"),
+        tumblr_refresh_token=SecretStr("tr"),
+        tumblr_blog="myblog",
+    )
+    fake = FakePlatforms()
+    with platform.db.session() as db:
+        pubs = _record_all(db, {**NO_VIEW_URLS, "vimeo": URLS["vimeo"]})
+        other = perf.record(
+            db,
+            db.get(VideoProject, pubs["vimeo"].project_id),
+            "https://www.tumblr.com/else/7654321",
+        )  # someone else's blog: can't be read with your token
+        res = stats.track(db, s, fake.client())
+        assert res.updated == 4
+        assert res.notes == ["Tumblr: no numbers for 1 video(s) (not found)."]
+        expected = {  # (likes, comments, shares); views are never reported
+            "reddit": (321, 45, 2),
+            "bluesky": (18, 4, 4),
+            "tumblr": (57, None, None),
+        }
+        for name, counts in expected.items():
+            snap = db.query(MetricSnapshot).filter_by(publication_id=pubs[name].id).one()
+            assert snap.no_views is True and snap.views == 0, name
+            assert (snap.likes, snap.comments, snap.shares) == counts, name
+        assert db.query(MetricSnapshot).filter_by(publication_id=other.id).count() == 0
+        vimeo = db.query(MetricSnapshot).filter_by(publication_id=pubs["vimeo"].id).one()
+        assert vimeo.no_views is None and vimeo.views == 77
+
+        # Placeholder zeros never count as views: no 72-hour number, lift or engagement.
+        for snap in db.query(MetricSnapshot):
+            snap.taken_at = snap.taken_at + timedelta(days=4)
+        rows = {r.pub.platform: r for r in perf.report(db, s).rows}
+        assert rows["vimeo"].window_views is not None
+        for name in expected:
+            assert rows[name].window_views is None and rows[name].engagement is None, name
 
 
 def test_a_failing_platform_or_video_doesnt_stop_the_others(platform, vsettings, tmp_path):

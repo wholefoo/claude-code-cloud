@@ -1337,6 +1337,55 @@ def hashtag_facets(text: str) -> list[dict]:
     return facets
 
 
+class BlueskyPublic:
+    """Bluesky's public AppView: counts for any public post, no login needed."""
+
+    API = "https://public.api.bsky.app/xrpc"
+    _HANDLE = re.compile(r"(did:plc:[a-z2-7]{24}|[A-Za-z0-9.-]{3,253})")
+
+    def __init__(self, client: httpx.Client | None = None):
+        self.http = _client(client)
+        self._dids: dict[str, str] = {}
+
+    def _did(self, handle: str) -> str:
+        if handle.startswith("did:"):
+            return handle
+        if handle not in self._dids:
+            r = self.http.get(
+                f"{self.API}/com.atproto.identity.resolveHandle", params={"handle": handle}
+            )
+            if r.status_code >= 400:
+                raise PlatformError(f"Bluesky: couldn't resolve @{handle}")
+            self._dids[handle] = str(r.json().get("did", ""))
+        return self._dids[handle]
+
+    def post_stats(self, posts: list[tuple[str, str]]) -> dict[str, dict]:
+        """``[(handle or DID, rkey)]`` → ``{rkey: counts}`` (Bluesky reports no views)."""
+        uris = {}
+        for handle, rkey in posts:
+            if self._HANDLE.fullmatch(handle) and re.fullmatch(r"[a-z2-7]{13}", rkey):
+                uris[f"at://{self._did(handle)}/app.bsky.feed.post/{rkey}"] = rkey
+        out: dict[str, dict] = {}
+        keys = list(uris)
+        for i in range(0, len(keys), 25):
+            r = self.http.get(
+                f"{self.API}/app.bsky.feed.getPosts", params=[("uris", u) for u in keys[i : i + 25]]
+            )
+            if r.status_code >= 400:
+                raise PlatformError(f"Bluesky: {r.status_code}")
+            for post in r.json().get("posts") or []:
+                rkey = uris.get(str(post.get("uri")))
+                if rkey:
+                    out[rkey] = {
+                        "views": None,
+                        "likes": _int(post.get("likeCount")),
+                        "comments": _int(post.get("replyCount")),
+                        "shares": (_int(post.get("repostCount")) or 0)
+                        + (_int(post.get("quoteCount")) or 0),
+                    }
+        return out
+
+
 class Tumblr:
     """Tumblr API v2 (NPF): one multipart request creates the post and uploads the video.
     The post state (draft / private / published) is chosen by the person. OAuth2 refresh
@@ -1432,6 +1481,17 @@ class Tumblr:
     def post_state(self, post_id: str) -> str:
         r = self.http.get(f"{self.API}/blog/{self.blog}/posts/{post_id}", headers=self._auth())
         return str(self._json(r).get("state", ""))
+
+    def post_notes(self, post_id: str) -> dict:
+        """Tumblr reports notes (likes + reblogs + replies together), not views."""
+        if not re.fullmatch(r"\d{1,25}", post_id):
+            raise ValueError("Invalid Tumblr post id.")
+        r = self.http.get(
+            f"{self.API}/blog/{self.blog}/posts", headers=self._auth(), params={"id": post_id}
+        )
+        posts = self._json(r).get("posts") or []
+        notes = _int(posts[0].get("note_count")) if posts else None
+        return {"views": None, "likes": notes}
 
 
 class Vimeo:
@@ -1788,6 +1848,27 @@ class Reddit:
                     if sig.url not in seen:
                         seen.add(sig.url)
                         out.append(sig)
+        return out
+
+    def post_stats(self, post_ids: list[str]) -> dict[str, dict]:
+        """Score and comment count for posts (Reddit reports no view counts), 100 per call."""
+        out: dict[str, dict] = {}
+        ids = [i for i in post_ids if re.fullmatch(r"[a-z0-9]{3,12}", i)]
+        for i in range(0, len(ids), 100):
+            r = self.http.get(
+                f"{self.API}/api/info",
+                headers=self._auth(),
+                params={"id": ",".join(f"t3_{x}" for x in ids[i : i + 100]), "raw_json": 1},
+            )
+            r.raise_for_status()
+            for child in r.json().get("data", {}).get("children", []):
+                d = child.get("data", {})
+                out[str(d.get("id"))] = {
+                    "views": None,
+                    "likes": _int(d.get("score")),
+                    "comments": _int(d.get("num_comments")),
+                    "shares": _int(d.get("num_crossposts")),
+                }
         return out
 
 

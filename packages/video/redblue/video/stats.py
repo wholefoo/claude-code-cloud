@@ -4,8 +4,9 @@ For each recent publication, read its counts from the platform's API with the cr
 already set for uploading, and store a snapshot. Only your own posts are read, with GET
 requests (TikTok's query endpoint is a POST that reads); nothing is ever posted.
 
-Not covered: Reddit, Bluesky and Tumblr report no view counts, and LinkedIn, Rumble,
-Snapchat and Twitch have no suitable API. X bills each read, so it's opt-in
+Reddit, Bluesky and Tumblr report no view counts: their likes, comments and shares are
+stored for display, flagged ``no_views`` so they stay out of lift and engagement. LinkedIn,
+Rumble, Snapchat and Twitch have no suitable API. X bills each read, so it's opt-in
 (``RB_VIDEO_X_STATS=true``). Use a CSV or type numbers in for those."""
 
 from __future__ import annotations
@@ -37,7 +38,14 @@ _ID_IN_URL = {
     "pinterest": re.compile(r"^https://(?:[a-z]+\.)?pinterest\.com/pin/(\d{5,30})$"),
     "vimeo": re.compile(r"^https://vimeo\.com/(?:.*/)?(\d{5,20})$"),
     "dailymotion": re.compile(r"^https://dailymotion\.com/video/(x[0-9a-z]{2,20})$"),
+    "reddit": re.compile(r"^https://(?:[a-z]+\.)?reddit\.com/r/[^/]+/comments/([a-z0-9]{3,12})"),
 }
+_BLUESKY = re.compile(r"^https://bsky\.app/profile/([^/]+)/post/([a-z2-7]{13})$")
+_TUMBLR = (
+    re.compile(r"^https://tumblr\.com/(?P<blog>[A-Za-z0-9-]+)/(?P<id>\d{5,25})"),
+    re.compile(r"^https://(?P<blog>[A-Za-z0-9-]+)\.tumblr\.com/post/(?P<id>\d{5,25})"),
+)
+NO_VIEWS = {"reddit", "bluesky", "tumblr"}  # these report likes/comments, never views
 NEEDS = {
     "tiktok": "TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET and TIKTOK_REFRESH_TOKEN (scope video.list)",
     "instagram": "INSTAGRAM_ACCESS_TOKEN and INSTAGRAM_USER_ID (insights permission)",
@@ -47,6 +55,9 @@ NEEDS = {
     "vimeo": "VIMEO_ACCESS_TOKEN",
     "dailymotion": "DAILYMOTION_API_KEY, DAILYMOTION_API_SECRET and DAILYMOTION_CHANNEL_ID",
     "x": "RB_VIDEO_X_STATS=true and the X credentials (X bills each read)",
+    "reddit": "REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET",
+    "bluesky": "",  # public posts: no login needed
+    "tumblr": "the Tumblr credentials and RB_VIDEO_TUMBLR_BLOG",
 }
 
 
@@ -60,6 +71,9 @@ def configured(s: VideoSettings) -> dict[str, bool]:
         "vimeo": s.vimeo_access_token is not None,
         "dailymotion": s.dailymotion_credentials is not None and bool(s.dailymotion_channel_id),
         "x": s.x_stats and s.x_credentials is not None,
+        "reddit": s.reddit_credentials is not None,
+        "bluesky": True,
+        "tumblr": s.tumblr_credentials is not None and bool(s.tumblr_blog),
     }
 
 
@@ -117,7 +131,23 @@ def _fetch(
         th = social.threads_client(s, http)
         _ids_from_listing(pubs, th.recent_media)
         return _one_by_one(pubs, th.media_stats, errors)
+    if platform == "bluesky":
+        found = {p.id: m.groups() for p in pubs if (m := _BLUESKY.match(p.url))}
+        for p in pubs:
+            p.external_id = found[p.id][1] if p.id in found else p.external_id
+        return clients.BlueskyPublic(http).post_stats(list(found.values())) if found else {}
+    if platform == "tumblr":
+        blog = s.tumblr_blog.lower()
+        for p in pubs:  # only posts on your own blog can be read
+            m = next((m for rx in _TUMBLR if (m := rx.match(p.url))), None)
+            if m and m["blog"].lower() == blog and not p.external_id:
+                p.external_id = m["id"]
+        return _one_by_one(pubs, social.tumblr_client(s, http).post_notes, errors)
     _ids_from_urls(pubs, platform)
+    if platform == "reddit":
+        ids = [p.external_id for p in pubs if p.external_id]
+        reader = clients.Reddit(s.reddit_credentials, s.reddit_user_agent, http)
+        return reader.post_stats(ids) if ids else {}
     if platform == "facebook":
         return _one_by_one(pubs, social.facebook_client(s, http).video_stats, errors)
     if platform == "vimeo":
@@ -163,14 +193,18 @@ def track(
         unmatched = 0
         for p in pubs:
             row = counts.get(p.external_id or "")
-            if not row or not isinstance(row.get("views"), int):
+            views_ok = row and (
+                isinstance(row.get("views"), int)
+                or (platform in NO_VIEWS and row.get("views") is None)
+            )
+            if not views_ok:
                 unmatched += 1
                 continue
             performance.add_snapshot(
                 db,
                 p,
                 source=f"{platform}_api",
-                views=row["views"],
+                views=row.get("views"),
                 likes=row.get("likes"),
                 comments=row.get("comments"),
                 shares=row.get("shares"),
@@ -178,8 +212,12 @@ def track(
             res.updated += 1
         if unmatched:
             why = f" First error: {errors[0]}" if errors else ""
+            hint = (
+                "not found"
+                if platform in NO_VIEWS
+                else "not found on your account, or views are hidden"
+            )
             res.notes.append(
-                f"{social.name(platform)}: no numbers for {unmatched} video(s) "
-                f"(not found on your account, or views are hidden).{why}"[:300]
+                f"{social.name(platform)}: no numbers for {unmatched} video(s) ({hint}).{why}"[:300]
             )
     return res
