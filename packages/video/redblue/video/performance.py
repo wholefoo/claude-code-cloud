@@ -291,8 +291,9 @@ def import_csv(db: Session, text: str) -> tuple[int, list[str]]:
         for key, names in _CSV_ALIASES.items():
             if h in names and key not in cols:
                 cols[key] = raw
-    if "url" not in cols or "views" not in cols:
-        return 0, ["The CSV needs a url column and a views column."]
+    counts = ("views", "likes", "comments", "shares")
+    if "url" not in cols or not any(k in cols for k in counts):
+        return 0, ["The CSV needs a url column and a views, likes, comments or shares column."]
     imported, errors = 0, []
     for n, row in enumerate(reader, start=2):
         if n - 1 > MAX_CSV_ROWS:
@@ -305,14 +306,17 @@ def import_csv(db: Session, text: str) -> tuple[int, list[str]]:
             if pub is None:
                 raise ValueError("URL isn't recorded on any project")
             taken = get.get("taken_at")
+            numbers = {k: _num(get.get(k)) for k in counts}
+            if all(v is None for v in numbers.values()):
+                raise ValueError("no views, likes, comments or shares")
             add_snapshot(
                 db,
                 pub,
                 source="csv",
-                views=_num(get["views"]) or 0,
-                likes=_num(get.get("likes")),
-                comments=_num(get.get("comments")),
-                shares=_num(get.get("shares")),
+                views=numbers["views"],  # blank: not reported (kept out of lift)
+                likes=numbers["likes"],
+                comments=numbers["comments"],
+                shares=numbers["shares"],
                 avg_view_pct=_num(get.get("avg_view_pct"), float),
                 avg_view_seconds=_num(get.get("avg_view_seconds"), float),
                 taken_at=datetime.fromisoformat(taken.strip()) if taken and taken.strip() else None,

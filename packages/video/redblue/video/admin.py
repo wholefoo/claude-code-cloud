@@ -868,7 +868,7 @@ def add_metrics(
     pub_id: int,
     db: DB,
     user: Writer,
-    views: Annotated[str, Form()],
+    views: Annotated[str, Form()] = "",
     likes: Annotated[str, Form()] = "",
     comments: Annotated[str, Form()] = "",
     shares: Annotated[str, Form()] = "",
@@ -878,14 +878,17 @@ def add_metrics(
     dest = f"/admin/video/projects/{pub.project_id}"
     try:
         pct = avg_view_pct.strip().rstrip("%")
+        numbers = [_count(v) for v in (views, likes, comments, shares)]
+        if all(n is None for n in numbers):
+            raise ValueError("Enter at least one number: views, likes, comments or shares.")
         performance.add_snapshot(
             db,
             pub,
             source="manual",
-            views=_count(views) or 0,
-            likes=_count(likes),
-            comments=_count(comments),
-            shares=_count(shares),
+            views=numbers[0],  # blank: not reported, kept out of lift and engagement
+            likes=numbers[1],
+            comments=numbers[2],
+            shares=numbers[3],
             avg_view_pct=float(pct) if pct else None,
         )
     except ValueError as exc:

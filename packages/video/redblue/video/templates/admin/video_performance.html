@@ -37,7 +37,7 @@
 <h2>Import numbers (CSV)</h2>
 <form class="rb-form" method="post" action="/admin/video/performance/import" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 <label>CSV file <input type="file" name="file" accept=".csv,text/csv" required></label><button class="rb-btn">Import</button></form>
-<p class="rb-muted">Columns: <code>url</code>, <code>views</code>, and optionally <code>likes</code>, <code>comments</code>, <code>shares</code>, <code>avg_view_pct</code>, <code>date</code>. Rows match publications by URL.</p>
+<p class="rb-muted">Columns: <code>url</code> plus any of <code>views</code>, <code>likes</code>, <code>comments</code>, <code>shares</code>, and optionally <code>avg_view_pct</code>, <code>date</code>. Rows match publications by URL. Leave <code>views</code> blank where a platform doesn't show views; those rows count for likes and comments only.</p>
 {% if r.medians %}<h3>Your medians at {{ r.window_hours }} h</h3>
 <ul>{% for k, v in r.medians.items() %}<li>{{ k }}: {{ "{:,}".format(v | round | int) }} views</li>{% endfor %}</ul>{% endif %}
 </section>

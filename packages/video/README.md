@@ -196,9 +196,12 @@ Instagram and Threads links are matched to your 200 most recent posts to find th
 once per video. If a platform refuses, the notes after **Fetch stats now** (or in
 `redblue video track`) say why, and the other platforms still update.
 
-The CSV needs `url` and `views` columns; `likes`, `comments`, `shares`, `avg_view_pct` and
-`date` are optional, and common export headers ("Video views", "Average percentage viewed")
-are recognized. Rows are matched to recorded publications by URL.
+The CSV needs a `url` column and at least one of `views`, `likes`, `comments` or `shares`;
+`avg_view_pct` and `date` are optional. Leave `views` blank (or out) for platforms that don't
+show views, such as LinkedIn: those rows are stored as likes/comments only and kept out of
+lift, like the automatic Reddit, Bluesky and Tumblr numbers. The same goes for **Enter
+numbers** on the project page, where views can be left blank. Common export headers
+("Video views", "Average percentage viewed") are recognized. Rows are matched to recorded publications by URL.
 
 **Comparing fairly.** Each video is measured by its views at the same age (72 hours by
 default, interpolated between snapshots) and compared with your median on the same

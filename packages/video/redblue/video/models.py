@@ -85,8 +85,8 @@ class MetricSnapshot(Base):
     shares: Mapped[int | None] = mapped_column(Integer, nullable=True)
     avg_view_pct: Mapped[float | None] = mapped_column(Float, nullable=True)  # retention 0–100
     avg_view_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
-    # True for platforms that report no view count (Reddit, Bluesky, Tumblr): ``views`` is
-    # then a placeholder 0 and the snapshot is left out of lift and engagement.
+    # True when no view count was reported (Reddit, Bluesky, Tumblr, or numbers entered
+    # without views): ``views`` is then a placeholder 0, left out of lift and engagement.
     no_views: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
 

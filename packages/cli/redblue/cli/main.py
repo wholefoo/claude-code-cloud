@@ -405,7 +405,8 @@ def video_track():
 
 @video_app.command("import-stats")
 def video_import_stats(path: Path = typer.Argument(..., exists=True, dir_okay=False)):
-    """Import numbers from a CSV (url, views, likes, comments, shares, avg_view_pct, date)."""
+    """Import numbers from a CSV: url plus any of views, likes, comments, shares (and
+    optionally avg_view_pct, date). Blank views = not reported."""
     from redblue.video import performance
 
     pipe = _video()
