@@ -28,7 +28,7 @@ test that fails before and passes after, arrive as pull requests for you to revi
      gate:
        runs-on: ubuntu-latest
        steps:
-         - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+         - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
            with:
              fetch-depth: 0    # lets the Red agent diff against the base branch
          - uses: wholefoo/redblue/action@17275f33efd6116eafeadf65042d8682f44945ae  # main, 2026-09-27
@@ -72,4 +72,5 @@ and set `seed_command: python -m myapp.seed` in `.redblue.yml`.
 | `fail_on` | from config | Severity threshold |
 | `open_fix_prs` | `true` | Open PRs for verified fixes |
 | `upload_sarif` | `true` | Upload to code scanning |
+| `install` | (none) | Command that installs your app for the preview, e.g. `make dev`. Without it: `requirements.txt` or the root `pyproject.toml`; if the app still can't be imported, preview and DAST are skipped (the report says so) |
 | `python_version` | `3.12` | Python for the app under test |

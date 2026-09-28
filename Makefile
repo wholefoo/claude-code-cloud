@@ -3,7 +3,7 @@ PACKAGES := packages/core packages/cms packages/templates packages/growth packag
 
 .PHONY: dev test lint gate
 dev:
-	pip install $(foreach p,$(PACKAGES),-e $(p)) pytest ruff bandit pip-audit
+	pip install $(foreach p,$(PACKAGES),-e $(p)) pytest httpx2 ruff bandit pip-audit
 
 test:
 	pytest
