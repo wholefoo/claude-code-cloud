@@ -37,10 +37,18 @@ def test_unavailable_scanners_are_reported_as_skipped_not_run(tmp_path, monkeypa
 
 
 def test_semgrep_notes_how_much_it_scanned(tmp_path, monkeypatch):
+    partial = [
+        "PartialParsing",
+        [{"path": "t/a.html", "start": {"line": 1}}, {"path": "t/a.html", "start": {"line": 6}}],
+    ]
     out = {
         "results": [],
-        "errors": [{"type": "Syntax error"}],
-        "paths": {"scanned": ["a.py", "b.py"]},
+        "errors": [
+            {"type": partial, "level": "warn", "path": "t/a.html"},
+            {"type": ["PartialParsing", [{"path": "t/b.html"}]], "level": "warn"},
+            {"type": "Timeout", "level": "error", "path": "big.py"},
+        ],
+        "paths": {"scanned": ["t/a.html", "t/b.html", "big.py"]},
     }
     monkeypatch.setattr(sg.shutil, "which", lambda _: "/usr/bin/semgrep")
     monkeypatch.setattr(
@@ -50,4 +58,13 @@ def test_semgrep_notes_how_much_it_scanned(tmp_path, monkeypatch):
     )
     ctx = ScanContext(repo_path=tmp_path, config=CFG)
     assert sg.SemgrepScanner().run(ctx) == []
-    assert ctx.notes == ["semgrep: 2 file(s) scanned, 1 file(s) or rule(s) could not be analyzed"]
+    assert ctx.notes == [
+        "semgrep: 3 file(s) scanned, 2 only partly parsed (e.g. template syntax), "
+        "1 error(s): some files or rules were not analyzed"
+    ]
+
+
+def test_semgrep_clean_run_note():
+    assert sg._coverage({"paths": {"scanned": ["a.py"]}, "errors": []}) == (
+        "semgrep: 1 file(s) scanned"
+    )
