@@ -93,7 +93,12 @@ def plan(config: GateConfig, changed: list[str] | None) -> ScanPlan:
     if not chosen:
         reasons.append("no security-relevant changes; running baseline SAST")
         chosen.add("builtin_sast")
-    return ScanPlan([n for n in enabled if n in chosen], dast or None, reasons)
+    names = [n for n in enabled if n in chosen]
+    if not names and "builtin_sast" in enabled:
+        # Every scanner the change called for is turned off: never pass on zero scanners.
+        reasons.append("chosen scanners are disabled; running baseline SAST")
+        names = ["builtin_sast"]
+    return ScanPlan(names, dast or None, reasons)
 
 
 class RedAgent:
