@@ -17,6 +17,8 @@ app.add_typer(build_app, name="build")
 app.add_typer(growth_app, name="growth")
 video_app = typer.Typer(help="Trending video pipeline (needs redblue-video).", no_args_is_help=True)
 app.add_typer(video_app, name="video")
+db_app = typer.Typer(help="Database migrations (Alembic).", no_args_is_help=True)
+app.add_typer(db_app, name="db")
 
 
 def _settings():
@@ -37,6 +39,59 @@ def _platform():
     from redblue.core.app import build_platform
 
     return build_platform(_settings())
+
+
+# ---------------------------------------------------------------- database
+
+
+def _raw_db():
+    from redblue.core.db import Database
+
+    return Database(_settings().database_url)
+
+
+@db_app.command("upgrade")
+def db_upgrade(revision: str = typer.Argument("head", help="Target revision")):
+    """Apply pending migrations (the app also does this at startup). Back up first."""
+    db = _raw_db()
+    before = db.current_revision()
+    db.upgrade(revision)
+    typer.echo(f"Database at {db.current_revision()} (was {before or 'unversioned'}).")
+
+
+@db_app.command("current")
+def db_current():
+    """Show the database's migration revision."""
+    typer.echo(_raw_db().current_revision() or "unversioned (run `redblue db upgrade`)")
+
+
+@db_app.command("check")
+def db_check():
+    """Exit 1 if the models differ from the upgraded database (a migration is missing)."""
+    db = _raw_db()
+    db.upgrade()
+    changes = db.pending_changes()
+    for change in changes:
+        typer.echo(f"  {change}")
+    if changes:
+        typer.secho(
+            "Models changed without a migration: run `redblue db revision -m ...`.", fg="red"
+        )
+        raise typer.Exit(1)
+    typer.echo("Models and migrations match.")
+
+
+@db_app.command("revision")
+def db_revision(message: str = typer.Option(..., "--message", "-m", help="What changed")):
+    """Write a migration for model changes (for contributors; edit and review it)."""
+    db = _raw_db()
+    db.upgrade()
+    if not db.pending_changes():
+        typer.echo("No model changes to migrate.")
+        raise typer.Exit(0)
+    path = db.revision(message)
+    typer.echo(f"Wrote {path}")
+    typer.echo("Review it: autogenerate can't see renames (it drops and re-adds) or data moves.")
 
 
 # ---------------------------------------------------------------- project

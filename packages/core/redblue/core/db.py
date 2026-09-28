@@ -9,13 +9,14 @@ import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
+from pathlib import Path
 
-from sqlalchemy import DateTime, Engine, create_engine, event, inspect, text
+from sqlalchemy import DateTime, Engine, create_engine, event, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-_IDENT = re.compile(r"[a-z_][a-z0-9_]{0,62}")
-_DDL_TYPE = re.compile(r"[A-Z][A-Z0-9_ ]*(\(\d+(,\s*\d+)?\))?")
+MIGRATIONS = Path(__file__).parent / "migrations"
+_LOCK_KEY = 72_390_411  # arbitrary, constant: serializes concurrent upgrades on Postgres
 
 
 def utcnow() -> datetime:
@@ -44,44 +45,64 @@ class Database:
         self.sessionmaker = sessionmaker(self.engine, expire_on_commit=False)
 
     def create_all(self) -> None:
-        # Import model modules so they register with Base.metadata.
+        """Bring the schema up to date: runs every pending migration (see ``upgrade``)."""
+        self.upgrade()
+
+    # ------------------------------------------------------------ migrations
+
+    def _alembic(self, connection):
+        from alembic.config import Config
+
+        cfg = Config()
+        cfg.set_main_option("script_location", str(MIGRATIONS))
+        cfg.set_main_option("file_template", "%%(rev)s")  # ids already carry the slug
+        cfg.attributes["connection"] = connection  # env.py uses it; the URL isn't passed
+        return cfg
+
+    def upgrade(self, revision: str = "head") -> None:
+        """Apply pending migrations. Works on empty databases and on ones created before
+        migrations existed (the baseline revision brings those up to date first)."""
+        from alembic import command
+
         _import_models()
-        Base.metadata.create_all(self.engine)
-        self.add_missing_columns()
-
-    def add_missing_columns(self) -> list[str]:
-        """Additive upgrades: add new *nullable* columns to existing tables.
-
-        ``create_all`` never alters existing tables, so a release that adds a column would
-        break older databases. This covers the common additive case safely; renames, type
-        changes and NOT NULL columns still need a real migration (Alembic, on the roadmap).
-        Returns the ``table.column`` names it added.
-        """
-        insp = inspect(self.engine)
-        existing_tables = set(insp.get_table_names())
-        quote = self.engine.dialect.identifier_preparer.quote
-        added: list[str] = []
         with self.engine.begin() as conn:
-            for table in Base.metadata.sorted_tables:
-                if table.name not in existing_tables:
-                    continue
-                present = {c["name"] for c in insp.get_columns(table.name)}
-                for col in table.columns:
-                    if col.name in present or not col.nullable or col.primary_key:
-                        continue
-                    # DDL identifiers can't be bound parameters. Names and types come from
-                    # our own model metadata (never user input); validate and quote anyway.
-                    if not (_IDENT.fullmatch(table.name) and _IDENT.fullmatch(col.name)):
-                        raise ValueError(f"Refusing unusual identifier {table.name}.{col.name}")
-                    ddl_type = col.type.compile(dialect=self.engine.dialect)
-                    if not _DDL_TYPE.fullmatch(ddl_type):
-                        raise ValueError(f"Refusing unusual column type {ddl_type!r}")
-                    stmt = (
-                        f"ALTER TABLE {quote(table.name)} ADD COLUMN {quote(col.name)} {ddl_type}"
-                    )
-                    conn.execute(text(stmt))
-                    added.append(f"{table.name}.{col.name}")
-        return added
+            if conn.dialect.name == "postgresql":  # several workers may start at once
+                conn.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _LOCK_KEY})
+            command.upgrade(self._alembic(conn), revision)
+
+    def current_revision(self) -> str | None:
+        from alembic.migration import MigrationContext
+
+        with self.engine.connect() as conn:
+            return MigrationContext.configure(conn).get_current_revision()
+
+    def pending_changes(self) -> list:
+        """Differences between the models and the upgraded database: empty unless a model
+        changed without a migration (``redblue db revision`` writes one)."""
+        from alembic.autogenerate import compare_metadata
+        from alembic.migration import MigrationContext
+
+        _import_models()
+        with self.engine.connect() as conn:
+            ctx = MigrationContext.configure(conn, opts={"compare_type": True})
+            return compare_metadata(ctx, Base.metadata)
+
+    def revision(self, message: str) -> Path:
+        """Write a new migration from the difference between the models and this
+        (upgraded) database. Review it before committing: autogenerate can't see renames."""
+        from alembic import command
+        from alembic.script import ScriptDirectory
+
+        _import_models()
+        with self.engine.begin() as conn:
+            cfg = self._alembic(conn)
+            heads = ScriptDirectory.from_config(cfg).get_heads()
+            number = max((int(h.split("_", 1)[0]) for h in heads if h[:4].isdigit()), default=0)
+            slug = re.sub(r"[^a-z0-9]+", "_", message.lower()).strip("_")[:40] or "change"
+            script = command.revision(
+                cfg, message=message, autogenerate=True, rev_id=f"{number + 1:04d}_{slug}"
+            )
+        return Path(script.path)
 
     @contextmanager
     def session(self) -> Iterator[Session]:

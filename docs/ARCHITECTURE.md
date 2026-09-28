@@ -64,10 +64,10 @@ per-agent spend limits and logs cost. Every agent has a deterministic no-key fal
 
 ## Known gaps (v0.1)
 
-- Schema upgrades are additive only: at startup `create_all` adds new tables and
-  `add_missing_columns()` adds new nullable columns to existing ones. Renames, type
-  changes and new NOT NULL columns need real migrations (Alembic), which are next on the
-  roadmap.
+- Migrations (Alembic) cover every schema change, but there is one linear history in
+  `redblue-core` for all packages' tables, and only SQLite is exercised in CI. Postgres
+  upgrades take an advisory lock so several workers can start at once, but haven't been
+  run against a real Postgres here.
 - Passkeys, Temporal-backed workflows, Search Console API sync (CSV import works), and
   Tailwind integration are not implemented yet; the base CSS is hand-written on design tokens.
 - The block editor is a validated JSON editor with preview; a visual block editor is planned.

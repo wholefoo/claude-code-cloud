@@ -129,6 +129,22 @@ or CSP errors, pages wider than the screen, and broken upload cards. It saves a 
 screenshot of each page. CI runs it on every pull request and keeps the screenshots as the
 `admin-screenshots` artifact.
 
+**Database migrations** (Alembic). The app upgrades its database at startup, and
+`redblue db upgrade` does it by hand (back up first). A database made before migrations
+existed is brought up to date by the baseline revision: missing tables, indexes and nullable
+columns are added, existing rows are kept.
+
+```bash
+redblue db current                    # the database's revision
+redblue db upgrade                    # apply pending migrations
+redblue db revision -m "Add X to Y"   # after changing a model: write a migration, then review it
+redblue db check                      # exit 1 if a model changed without a migration
+```
+
+Migrations live in `packages/core/redblue/core/migrations/versions/`. Autogenerate can't
+tell a rename from a drop plus an add, so edit renames and data moves by hand. The test
+suite fails if the models and migrations drift apart.
+
 Contributors and AI coding sessions: read [`CLAUDE.md`](CLAUDE.md) first.
 
 ## License
