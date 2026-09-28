@@ -338,5 +338,12 @@ def test_only_configured_platforms_get_a_card(tmp_path, monkeypatch):
         performance.add_snapshot(db, pub, source="reddit_api", views=None, likes=321, comments=45)
     page = c.get(url).text
     assert "no view count · 321 points · 45 comments" in page and "0 views" not in page
+
+    # Hand entry: views can be left blank, but at least one number is needed.
+    metrics = f"/admin/video/publications/{pub.id}/metrics"
+    r = c.post(metrics, data={"csrf_token": tok, "views": " "})
+    assert "Enter at least one number" in r.text
+    r = c.post(metrics, data={"csrf_token": tok, "likes": "400", "comments": "50"})
+    assert "Numbers saved." in r.text and "no view count · 400 points · 50 comments" in r.text
     assert ">n/a</td>" in c.get("/admin/video/performance").text
     vconfig.get_video_settings.cache_clear()

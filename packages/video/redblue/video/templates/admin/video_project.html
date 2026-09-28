@@ -365,7 +365,7 @@
       {% if m %}<span>{% if m.no_views %}no view count{% else %}{{ "{:,}".format(m.views) }} views{% endif %}{% if m.likes is not none %} · {{ "{:,}".format(m.likes) }} {{ {"reddit": "points", "tumblr": "notes"}.get(pub.platform, "likes") }}{% endif %}{% if m.comments is not none %} · {{ "{:,}".format(m.comments) }} comments{% endif %}{% if m.avg_view_pct is not none %} · {{ m.avg_view_pct | round(1) }}% viewed{% endif %}</span> <span class="rb-muted">({{ m.source }}, {{ m.taken_at.strftime("%Y-%m-%d %H:%M") }} UTC)</span>{% else %}<span class="rb-muted">No numbers yet.</span>{% endif %}</p>
       <details><summary>Enter numbers</summary>
       <form class="rb-form" method="post" action="/admin/video/publications/{{ pub.id }}/metrics"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <label>Views <input name="views" inputmode="numeric" required></label>
+        <label>Views <input name="views" inputmode="numeric"> <span class="rb-muted">(leave blank if the platform doesn't show views)</span></label>
         <label>Likes <input name="likes" inputmode="numeric"></label>
         <label>Comments <input name="comments" inputmode="numeric"></label>
         <label>Shares <input name="shares" inputmode="numeric"></label>

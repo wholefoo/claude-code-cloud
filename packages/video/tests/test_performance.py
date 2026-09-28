@@ -199,8 +199,33 @@ def test_import_csv_matches_by_url_and_reports_bad_rows(platform):
         assert (snap.views, snap.shares, snap.avg_view_pct) == (12400, 55, 64.0)
         assert snap.taken_at == datetime(2026, 9, 25)
         assert perf.import_csv(db, "a,b\n1,2\n")[1] == [
-            "The CSV needs a url column and a views column."
+            "The CSV needs a url column and a views, likes, comments or shares column."
         ]
+
+
+def test_import_csv_without_views_stores_engagement_only(platform):
+    with platform.db.session() as db:
+        p = VideoProject(topic="t", status="approved")
+        db.add(p)
+        db.flush()
+        li = perf.record(db, p, "https://www.linkedin.com/feed/update/urn:li:activity:7300/")
+        tt = perf.record(db, p, "https://www.tiktok.com/@me/video/1")
+        text = (
+            "url,likes,comments\n"  # a likes-only export: no views column at all
+            "https://www.linkedin.com/feed/update/urn:li:activity:7300/,42,7\n"
+            "https://www.linkedin.com/feed/update/urn:li:activity:7300/,,\n"
+        )
+        n, errors = perf.import_csv(db, text)
+        assert n == 1 and errors == ["Row 3: no views, likes, comments or shares"]
+        snap = db.query(MetricSnapshot).filter_by(publication_id=li.id).one()
+        assert (snap.no_views, snap.views, snap.likes, snap.comments) == (True, 0, 42, 7)
+
+        # With a views column, a blank cell means "not reported" and an explicit 0 is kept.
+        n, errors = perf.import_csv(db, f"url,views,likes\n{tt.url},,5\n{tt.url},0,6\n")
+        assert (n, errors) == (2, [])
+        blank, zero = db.query(MetricSnapshot).filter_by(publication_id=tt.id).order_by("id")
+        assert (blank.no_views, blank.likes) == (True, 5)
+        assert (zero.no_views, zero.views, zero.likes) == (None, 0, 6)
 
 
 def _history(db, rows):
