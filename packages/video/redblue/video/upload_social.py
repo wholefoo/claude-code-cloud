@@ -82,6 +82,44 @@ NAMES = {
 }
 
 
+# What each upload needs besides RB_VIDEO_UPLOAD_ENABLED (shown for platforms not set up).
+SETUP = {
+    "youtube": [
+        "YOUTUBE_OAUTH_CLIENT_ID",
+        "YOUTUBE_OAUTH_CLIENT_SECRET",
+        "YOUTUBE_UPLOAD_REFRESH_TOKEN",
+    ],
+    "tiktok": ["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET", "TIKTOK_REFRESH_TOKEN"],
+    "instagram": ["INSTAGRAM_ACCESS_TOKEN", "INSTAGRAM_USER_ID"],
+    "facebook": ["FACEBOOK_PAGE_ACCESS_TOKEN", "FACEBOOK_PAGE_ID"],
+    "linkedin": ["LINKEDIN_ACCESS_TOKEN", "LINKEDIN_AUTHOR_URN"],
+    "x": ["X_CLIENT_ID", "X_REFRESH_TOKEN", "RB_VIDEO_X_TOKEN_FILE"],
+    "reddit": [
+        "REDDIT_CLIENT_ID",
+        "REDDIT_CLIENT_SECRET",
+        "REDDIT_POST_REFRESH_TOKEN",
+        "REDDIT_USERNAME",
+    ],
+    "bluesky": ["BLUESKY_HANDLE", "BLUESKY_APP_PASSWORD"],
+    "tumblr": [
+        "TUMBLR_CLIENT_ID",
+        "TUMBLR_CLIENT_SECRET",
+        "TUMBLR_REFRESH_TOKEN",
+        "RB_VIDEO_TUMBLR_BLOG",
+    ],
+    "vimeo": ["VIMEO_ACCESS_TOKEN"],
+    "dailymotion": ["DAILYMOTION_API_KEY", "DAILYMOTION_API_SECRET", "DAILYMOTION_CHANNEL_ID"],
+    "rumble": ["RUMBLE_ACCESS_TOKEN (Rumble issues it on request)"],
+    "pinterest": [
+        "PINTEREST_APP_ID",
+        "PINTEREST_APP_SECRET",
+        "PINTEREST_REFRESH_TOKEN",
+        "RB_VIDEO_PINTEREST_BOARD_ID",
+    ],
+    "threads": ["THREADS_ACCESS_TOKEN", "THREADS_USER_ID"],
+}
+
+
 def name(platform: str) -> str:
     return NAMES.get(platform, platform.title())
 

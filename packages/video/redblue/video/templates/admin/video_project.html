@@ -64,10 +64,9 @@
   </section>
   {% endif %}
   {% if project.status == "approved" and renders %}
-  <section class="rb-card"><h2>Upload to YouTube</h2>
-  {% if not upload_enabled %}
-    <p class="rb-muted">Direct upload is off. Download the render and upload it yourself, or turn it on with <code>RB_VIDEO_UPLOAD_ENABLED</code> and a YouTube upload token (see the video README).</p>
-  {% elif not user.has_role(Role.editor) %}
+  {% if upload_enabled %}
+  <details class="rb-card rb-upload" id="upload-youtube"><summary><h2>Upload to YouTube</h2>{% if "youtube" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
+  {% if not user.has_role(Role.editor) %}
     <p class="rb-muted">An editor can upload this video.</p>
   {% else %}
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/upload"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -92,13 +91,13 @@
     </form>
     <p class="rb-muted">Uploads start private unless you choose otherwise. RedBlue never uploads on its own.</p>
   {% endif %}
-  </section>
+  </details>
+  {% endif %}
   {% endif %}
   {% if project.status == "approved" and renders and user.has_role(Role.editor) %}
-  <section class="rb-card"><h2>Upload to TikTok</h2>
-  {% if not social.tiktok %}
-    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code> and the TikTok credentials (see the video README), or upload the download yourself.</p>
-  {% elif tiktok_mode == "direct" and tiktok_opts and tiktok_opts.error %}
+  {% if social.tiktok %}
+  <details class="rb-card rb-upload" id="upload-tiktok"><summary><h2>Upload to TikTok</h2>{% if "tiktok" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
+  {% if tiktok_mode == "direct" and tiktok_opts and tiktok_opts.error %}
     <p class="rb-error" role="alert">Couldn't load your TikTok account settings: {{ tiktok_opts.error }}</p>
   {% else %}
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/tiktok"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -127,11 +126,10 @@
       <button class="rb-btn rb-btn--primary">{{ "Post to TikTok" if tiktok_mode == "direct" else "Send to TikTok drafts" }}</button>
     </form>
   {% endif %}
-  </section>
-  <section class="rb-card"><h2>Upload to Instagram</h2>
-  {% if not social.instagram %}
-    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code> and the Instagram credentials (see the video README), or upload the download yourself.</p>
-  {% else %}
+  </details>
+  {% endif %}
+  {% if social.instagram %}
+  <details class="rb-card rb-upload" id="upload-instagram"><summary><h2>Upload to Instagram</h2>{% if "instagram" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/instagram"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if r.key == "9:16" %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
       <label>Caption <textarea name="caption" rows="4" maxlength="2200">{{ social_defaults.instagram_caption }}</textarea></label>
@@ -140,12 +138,10 @@
       <button class="rb-btn rb-btn--primary">Upload Reel (not public yet)</button>
     </form>
     <p class="rb-muted">Step 1 uploads it for processing. Instagram posts are always public, so publishing is a separate step below.</p>
+  </details>
   {% endif %}
-  </section>
-  <section class="rb-card"><h2>Upload to Facebook</h2>
-  {% if not social.facebook %}
-    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code> and the Facebook Page credentials (see the video README), or upload the download yourself.</p>
-  {% else %}
+  {% if social.facebook %}
+  <details class="rb-card rb-upload" id="upload-facebook"><summary><h2>Upload to Facebook</h2>{% if "facebook" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/facebook"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if r.key == "9:16" %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
       <label>Title <input name="title" maxlength="255" value="{{ social_defaults.title }}"></label>
@@ -158,12 +154,10 @@
       <label class="rb-check"><input type="checkbox" name="confirm_public" value="1"> If publishing now: it will be public on the Page right away</label>
       <button class="rb-btn rb-btn--primary">Upload Reel to Page</button>
     </form>
+  </details>
   {% endif %}
-  </section>
-  <section class="rb-card"><h2>Upload to LinkedIn</h2>
-  {% if not social.linkedin %}
-    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code> and the LinkedIn credentials (see the video README), or upload the download yourself.</p>
-  {% else %}
+  {% if social.linkedin %}
+  <details class="rb-card rb-upload" id="upload-linkedin"><summary><h2>Upload to LinkedIn</h2>{% if "linkedin" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/linkedin"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if loop.first %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
       <label>Video title <input name="title" maxlength="200" value="{{ social_defaults.title }}"></label>
@@ -172,12 +166,10 @@
       <button class="rb-btn rb-btn--primary">Upload video (not posted yet)</button>
     </form>
     <p class="rb-muted">Step 1 uploads it for processing. You choose who sees it and post it in a separate step below.</p>
+  </details>
   {% endif %}
-  </section>
-  <section class="rb-card"><h2>Upload to X</h2>
-  {% if not social.x %}
-    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code>, the X credentials and <code>RB_VIDEO_X_TOKEN_FILE</code> (see the video README), or upload the download yourself.</p>
-  {% else %}
+  {% if social.x %}
+  <details class="rb-card rb-upload" id="upload-x"><summary><h2>Upload to X</h2>{% if "x" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/x"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if loop.first %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
       <label>Post text <textarea name="text" rows="3" maxlength="{{ x_max_chars }}">{{ social_defaults.x_text }}</textarea></label>
@@ -185,36 +177,30 @@
       <button class="rb-btn rb-btn--primary">Upload video (not posted yet)</button>
     </form>
     <p class="rb-muted">Step 1 uploads it for processing; you post it in a separate step below. X charges per post on its pay-per-use plan.</p>
+  </details>
   {% endif %}
-  </section>
-  <section class="rb-card"><h2>Upload to Reddit</h2>
-  {% if not social.reddit %}
-    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code>, <code>REDDIT_POST_REFRESH_TOKEN</code> and <code>REDDIT_USERNAME</code> (see the video README), or upload the download yourself.</p>
-  {% else %}
+  {% if social.reddit %}
+  <details class="rb-card rb-upload" id="upload-reddit"><summary><h2>Upload to Reddit</h2>{% if "reddit" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/reddit"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if r.key == "9:16" %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
       <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> I watched this render, checked its facts and have the rights to everything in it</label>
       <button class="rb-btn rb-btn--primary">Upload video (not posted yet)</button>
     </form>
     <p class="rb-muted">You pick one subreddit and a title in the next step. Most subreddits limit self-promotion: read the rules first.</p>
+  </details>
   {% endif %}
-  </section>
-  <section class="rb-card"><h2>Upload to Bluesky</h2>
-  {% if not social.bluesky %}
-    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code>, <code>BLUESKY_HANDLE</code> and <code>BLUESKY_APP_PASSWORD</code> (see the video README), or upload the download yourself.</p>
-  {% else %}
+  {% if social.bluesky %}
+  <details class="rb-card rb-upload" id="upload-bluesky"><summary><h2>Upload to Bluesky</h2>{% if "bluesky" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/bluesky"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if r.key == "9:16" %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
       <label>Post text <textarea name="text" rows="3" maxlength="300">{{ social_defaults.bluesky_text }}</textarea></label>
       <label class="rb-check"><input type="checkbox" name="confirm" value="1" required> I watched this render, checked its facts and have the rights to everything in it</label>
       <button class="rb-btn rb-btn--primary">Upload video (not posted yet)</button>
     </form>
+  </details>
   {% endif %}
-  </section>
-  <section class="rb-card"><h2>Upload to Tumblr</h2>
-  {% if not social.tumblr %}
-    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code>, the Tumblr credentials and <code>RB_VIDEO_TUMBLR_BLOG</code> (see the video README), or upload the download yourself.</p>
-  {% else %}
+  {% if social.tumblr %}
+  <details class="rb-card rb-upload" id="upload-tumblr"><summary><h2>Upload to Tumblr</h2>{% if "tumblr" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/tumblr"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if r.key == "9:16" %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
       <label>Caption <textarea name="caption" rows="4" maxlength="4096">{{ social_defaults.tumblr_caption }}</textarea></label>
@@ -228,12 +214,10 @@
       <label class="rb-check"><input type="checkbox" name="confirm_public" value="1"> If published: it will be public on the blog right away</label>
       <button class="rb-btn rb-btn--primary">Upload to Tumblr</button>
     </form>
+  </details>
   {% endif %}
-  </section>
-  <section class="rb-card"><h2>Upload to Vimeo</h2>
-  {% if not social.vimeo %}
-    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code> and <code>VIMEO_ACCESS_TOKEN</code> (see the video README), or upload the download yourself.</p>
-  {% else %}
+  {% if social.vimeo %}
+  <details class="rb-card rb-upload" id="upload-vimeo"><summary><h2>Upload to Vimeo</h2>{% if "vimeo" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/vimeo"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if loop.first %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
       <label>Title <input name="title" maxlength="128" value="{{ social_defaults.title[:128] }}"></label>
@@ -247,12 +231,10 @@
       <label class="rb-check"><input type="checkbox" name="confirm_public" value="1"> If not "Only me": other people can watch it once it's processed</label>
       <button class="rb-btn rb-btn--primary">Upload to Vimeo</button>
     </form>
+  </details>
   {% endif %}
-  </section>
-  <section class="rb-card"><h2>Upload to Dailymotion</h2>
-  {% if not social.dailymotion %}
-    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code>, the Dailymotion API key and secret and <code>DAILYMOTION_CHANNEL_ID</code> (see the video README), or upload the download yourself.</p>
-  {% else %}
+  {% if social.dailymotion %}
+  <details class="rb-card rb-upload" id="upload-dailymotion"><summary><h2>Upload to Dailymotion</h2>{% if "dailymotion" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/dailymotion"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if loop.first %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
       <label>Title <input name="title" maxlength="255" value="{{ social_defaults.title[:255] }}"></label>
@@ -268,12 +250,10 @@
       <label class="rb-check"><input type="checkbox" name="confirm_public" value="1"> If not a draft: other people can watch it once it's encoded</label>
       <button class="rb-btn rb-btn--primary">Upload to Dailymotion</button>
     </form>
+  </details>
   {% endif %}
-  </section>
-  <section class="rb-card"><h2>Upload to Rumble</h2>
-  {% if not social.rumble %}
-    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code> and <code>RUMBLE_ACCESS_TOKEN</code> (Rumble issues it on request; see the video README), or upload the download yourself.</p>
-  {% else %}
+  {% if social.rumble %}
+  <details class="rb-card rb-upload" id="upload-rumble"><summary><h2>Upload to Rumble</h2>{% if "rumble" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/rumble"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if loop.first %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
       <label>Title <input name="title" maxlength="200" value="{{ social_defaults.title[:200] }}"></label>
@@ -286,12 +266,10 @@
       <label class="rb-check"><input type="checkbox" name="confirm_public" value="1" required> It will be public on Rumble right away (Rumble has no drafts)</label>
       <button class="rb-btn rb-btn--primary">Publish to Rumble</button>
     </form>
+  </details>
   {% endif %}
-  </section>
-  <section class="rb-card"><h2>Upload to Pinterest</h2>
-  {% if not social.pinterest %}
-    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code>, the Pinterest credentials and <code>RB_VIDEO_PINTEREST_BOARD_ID</code> (see the video README), or upload the download yourself.</p>
-  {% else %}
+  {% if social.pinterest %}
+  <details class="rb-card rb-upload" id="upload-pinterest"><summary><h2>Upload to Pinterest</h2>{% if "pinterest" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/pinterest"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Render <select name="format">{% for r in renders %}<option value="{{ r.key }}"{% if r.key == "9:16" %} selected{% endif %}>{{ r.key }}</option>{% endfor %}</select></label>
       <label>Title <input name="title" maxlength="100" value="{{ social_defaults.title[:100] }}"></label>
@@ -302,12 +280,11 @@
       <button class="rb-btn rb-btn--primary">Upload video (not pinned yet)</button>
     </form>
     <p class="rb-muted">Step 1 uploads it for processing; you pin it to the board in a separate step below. Who sees the Pin depends on the board (public or secret).</p>
+  </details>
   {% endif %}
-  </section>
-  <section class="rb-card"><h2>Upload to Threads</h2>
-  {% if not social.threads %}
-    <p class="rb-muted">Off. Set <code>RB_VIDEO_UPLOAD_ENABLED</code> and the Threads credentials (see the video README), or upload the download yourself.</p>
-  {% elif threads_problem %}
+  {% if social.threads %}
+  <details class="rb-card rb-upload" id="upload-threads"><summary><h2>Upload to Threads</h2>{% if "threads" in sent_platforms %} <span class="rb-muted">· sent</span>{% endif %}</summary>
+  {% if threads_problem %}
     <p class="rb-muted">{{ threads_problem }} Threads fetches the video from this site through a signed link that expires in an hour.</p>
   {% else %}
     <form class="rb-form" method="post" action="/admin/video/projects/{{ project.id }}/threads"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -318,7 +295,14 @@
     </form>
     <p class="rb-muted">Threads fetches the video through a signed link that expires in an hour. You post it in a separate step below.</p>
   {% endif %}
-  </section>
+  </details>
+  {% endif %}
+  {% if not_set_up %}
+  <details class="rb-card rb-upload" id="upload-setup"><summary><h2>Other platforms</h2> <span class="rb-muted">· {{ not_set_up | map(attribute="name") | join(", ") }}</span></summary>
+    <p class="rb-muted">Direct upload is off for these. Download the render and upload it yourself (then record the link under Published), or turn one on with <code>RB_VIDEO_UPLOAD_ENABLED</code> and its settings (see the video README):</p>
+    <ul>{% for n in not_set_up %}<li>{{ n.name }}: {% for v in n.settings %}<code>{{ v }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
   {% endif %}
   {% if social_uploads %}
   <section class="rb-card"><h2>Uploads</h2>
