@@ -64,8 +64,10 @@ per-agent spend limits and logs cost. Every agent has a deterministic no-key fal
 
 ## Known gaps (v0.1)
 
-- Schema changes use `create_all` (new tables only); Alembic migrations for column
-  changes are next on the roadmap.
+- Schema upgrades are additive only: at startup `create_all` adds new tables and
+  `add_missing_columns()` adds new nullable columns to existing ones. Renames, type
+  changes and new NOT NULL columns need real migrations (Alembic), which are next on the
+  roadmap.
 - Passkeys, Temporal-backed workflows, Search Console API sync (CSV import works), and
   Tailwind integration are not implemented yet; the base CSS is hand-written on design tokens.
 - The block editor is a validated JSON editor with preview; a visual block editor is planned.
