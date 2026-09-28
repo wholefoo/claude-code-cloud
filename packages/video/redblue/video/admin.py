@@ -129,6 +129,11 @@ def project(pid: int, request: Request, db: DB, user: Writer) -> HTMLResponse:
         }
         for k in (p.renders or ({"9:16": p.render_path} if p.render_path else {}))
     ]
+    uploaded = {r["key"] for r in renders if uploads.already_uploaded(db, p, r["key"]) is not None}
+    ready = social.available(vs)
+    social_uploads = list(
+        db.scalars(select(Upload).where(Upload.project_id == pid).order_by(Upload.id))
+    )
     return _render(
         request,
         "video_project.html",
@@ -145,19 +150,22 @@ def project(pid: int, request: Request, db: DB, user: Writer) -> HTMLResponse:
         platforms=list(performance.PLATFORMS),
         upload_enabled=uploads.enabled(vs),
         upload_defaults=uploads.defaults(p, vs) if p.status == "approved" else {},
-        uploaded={
-            r["key"] for r in renders if uploads.already_uploaded(db, p, r["key"]) is not None
-        },
-        social=social.available(vs),
+        uploaded=uploaded,
+        social=ready,
         social_defaults=social.defaults(p) if p.status == "approved" else {},
         tiktok_mode=vs.tiktok_mode,
         tiktok_opts=_tiktok_options(vs) if _wants_tiktok_options(p, vs, user) else None,
         privacy_labels=social.PRIVACY_LABELS,
         threads_problem=social.public_base_problem(_public_base(request)),
         x_max_chars=vs.x_max_chars,
-        social_uploads=list(
-            db.scalars(select(Upload).where(Upload.project_id == pid).order_by(Upload.id))
-        ),
+        social_uploads=social_uploads,
+        sent_platforms={u.platform for u in social_uploads if u.status not in ("failed", "expired")}
+        | ({"youtube"} if uploaded else set()),
+        not_set_up=[
+            {"name": social.name(k), "settings": v}
+            for k, v in social.SETUP.items()
+            if not (uploads.enabled(vs) if k == "youtube" else ready.get(k))
+        ],
     )
 
 

@@ -262,3 +262,60 @@ def test_admin_vimeo_flow(tmp_path, monkeypatch):
     r = c.post(f"/admin/video/uploads/{uid}/refresh", data={"csrf_token": tok})
     assert "Vimeo upload: draft" in r.text and "change its privacy on Vimeo" in r.text
     vconfig.get_video_settings.cache_clear()
+
+
+def test_only_configured_platforms_get_a_card(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from redblue.core.config import Settings
+    from redblue.platform.app import create_app
+    from redblue.platform.seed import ensure_admin
+    from redblue.video import config as vconfig
+
+    monkeypatch.chdir(tmp_path)
+    for k, v in {
+        "RB_VIDEO_OUTPUT_DIR": str(tmp_path / "out"),
+        "RB_VIDEO_UPLOAD_ENABLED": "true",
+        "VIMEO_ACCESS_TOKEN": "vm-token",
+    }.items():
+        monkeypatch.setenv(k, v)
+    vconfig.get_video_settings.cache_clear()
+    fake = FakeVimeo()
+    mock = fake.client()
+    monkeypatch.setattr(clients, "_client", lambda c: c or mock)
+    app = create_app(
+        Settings(
+            database_url=f"sqlite:///{tmp_path}/t.db",
+            env="test",
+            storage_dir=tmp_path / "m",
+            secret_key="k" * 48,
+        )
+    )
+    with app.state.rb.db.session() as db:
+        ensure_admin(db, "admin@example.com", "correct-horse-battery")
+        pid = _project(db, vconfig.get_video_settings()).id
+    c = TestClient(app)
+    c.get("/admin/login")
+    tok = c.cookies["rb_csrf"]
+    c.post(
+        "/admin/login",
+        data={"email": "admin@example.com", "password": "correct-horse-battery", "csrf_token": tok},
+    )
+    url = f"/admin/video/projects/{pid}"
+    page = c.get(url).text
+    # Vimeo is set up: its form sits in a collapsed card.
+    assert '<details class="rb-card rb-upload" id="upload-vimeo">' in page
+    assert f'action="/admin/video/projects/{pid}/vimeo"' in page
+    # Everything else is one line each in "Other platforms", with the settings it needs.
+    assert 'id="upload-tiktok"' not in page and '/tiktok"' not in page
+    assert "Upload to TikTok" not in page and "Upload to YouTube" not in page
+    assert "<h2>Other platforms</h2>" in page
+    assert "TikTok: <code>TIKTOK_CLIENT_KEY</code>" in page
+    assert "YouTube: <code>YOUTUBE_OAUTH_CLIENT_ID</code>" in page
+    assert "Vimeo:" not in page.split("<h2>Other platforms</h2>")[1]
+    assert "· sent" not in page
+
+    c.post(f"{url}/vimeo", data={"csrf_token": tok, "confirm": "1", "title": "Heat"})
+    page = c.get(url).text
+    assert '<h2>Upload to Vimeo</h2> <span class="rb-muted">· sent</span>' in page
+    vconfig.get_video_settings.cache_clear()
