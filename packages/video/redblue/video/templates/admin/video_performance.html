@@ -48,12 +48,12 @@
 {% for row in r.rows %}{% set m = row.latest %}<tr>
 <td><a href="/admin/video/projects/{{ row.project.id }}">{{ row.project.topic }}</a><br><span class="rb-muted">{{ row.pub.published_at.strftime("%Y-%m-%d") }}{% if row.pub.format %} · {{ row.pub.format }}{% endif %}</span></td>
 <td><a href="{{ row.pub.url }}" rel="noopener noreferrer" target="_blank">{{ row.pub.platform }}</a></td>
-<td>{{ "{:,}".format(m.views) if m else "—" }}</td>
+<td>{{ "n/a" if m and m.no_views else ("{:,}".format(m.views) if m else "—") }}</td>
 <td>{{ "{:,}".format(row.window_views | round | int) if row.window_views is not none else "too early" }}</td>
 <td>{{ "×%.2f" | format(row.lift) if row.lift is not none else "—" }}</td>
 <td>{{ "%.1f%%" | format(100 * row.engagement) if row.engagement is not none else "—" }}</td>
 <td>{{ "%.0f%%" | format(m.avg_view_pct) if m and m.avg_view_pct is not none else "—" }}</td>
 </tr>{% else %}<tr><td colspan="7" class="rb-muted">Nothing recorded yet. Approve a video, upload it, then record the URL on its project page.</td></tr>{% endfor %}
 </tbody></table>
-<p class="rb-muted">Lift needs 3+ videos with {{ r.window_hours }}-hour numbers on a platform. Engagement = (likes + 2×comments + 3×shares) ÷ views.</p>
+<p class="rb-muted">Lift needs 3+ videos with {{ r.window_hours }}-hour numbers on a platform. Engagement = (likes + 2×comments + 3×shares) ÷ views. Reddit, Bluesky and Tumblr report no views ("n/a"), so their likes and comments show on the project page but they get no lift or engagement.</p>
 {% endblock %}

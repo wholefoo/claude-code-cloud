@@ -327,4 +327,16 @@ def test_only_configured_platforms_get_a_card(tmp_path, monkeypatch):
     assert "open=" not in r.history[0].headers["location"]  # success: cards stay closed
     page = c.get(url).text
     assert '<h2>Upload to Vimeo</h2> <span class="rb-muted">· sent</span>' in page
+
+    # A platform without view counts shows its engagement, never "0 views".
+    from redblue.video import performance
+
+    with app.state.rb.db.session() as db:
+        pub = performance.record(
+            db, db.get(VideoProject, pid), "https://www.reddit.com/r/energy/comments/1abcde/x/"
+        )
+        performance.add_snapshot(db, pub, source="reddit_api", views=None, likes=321, comments=45)
+    page = c.get(url).text
+    assert "no view count · 321 points · 45 comments" in page and "0 views" not in page
+    assert ">n/a</td>" in c.get("/admin/video/performance").text
     vconfig.get_video_settings.cache_clear()

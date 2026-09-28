@@ -362,7 +362,7 @@
     <div class="rb-pub">
       <p><strong>{{ pub.platform }}</strong>{% if pub.format %} · {{ pub.format }}{% endif %}{% if pub.privacy %} · {{ pub.privacy }}{% endif %}{% if pub.uploaded_by %} · uploaded by {{ pub.uploaded_by }}{% endif %} · {{ pub.published_at.strftime("%Y-%m-%d") }}<br>
       <a href="{{ pub.url }}" rel="noopener noreferrer" target="_blank">{{ pub.url }}</a><br>
-      {% if m %}<span>{{ "{:,}".format(m.views) }} views{% if m.likes is not none %} · {{ "{:,}".format(m.likes) }} likes{% endif %}{% if m.comments is not none %} · {{ "{:,}".format(m.comments) }} comments{% endif %}{% if m.avg_view_pct is not none %} · {{ m.avg_view_pct | round(1) }}% viewed{% endif %}</span> <span class="rb-muted">({{ m.source }}, {{ m.taken_at.strftime("%Y-%m-%d %H:%M") }} UTC)</span>{% else %}<span class="rb-muted">No numbers yet.</span>{% endif %}</p>
+      {% if m %}<span>{% if m.no_views %}no view count{% else %}{{ "{:,}".format(m.views) }} views{% endif %}{% if m.likes is not none %} · {{ "{:,}".format(m.likes) }} {{ {"reddit": "points", "tumblr": "notes"}.get(pub.platform, "likes") }}{% endif %}{% if m.comments is not none %} · {{ "{:,}".format(m.comments) }} comments{% endif %}{% if m.avg_view_pct is not none %} · {{ m.avg_view_pct | round(1) }}% viewed{% endif %}</span> <span class="rb-muted">({{ m.source }}, {{ m.taken_at.strftime("%Y-%m-%d %H:%M") }} UTC)</span>{% else %}<span class="rb-muted">No numbers yet.</span>{% endif %}</p>
       <details><summary>Enter numbers</summary>
       <form class="rb-form" method="post" action="/admin/video/publications/{{ pub.id }}/metrics"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label>Views <input name="views" inputmode="numeric" required></label>

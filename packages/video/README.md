@@ -171,7 +171,8 @@ recorded on several platforms, one entry per URL.
 | YouTube | Fetched every 6 hours (and with `redblue video track` or **Fetch stats now**): views, likes and comments via `YOUTUBE_API_KEY`; with the optional OAuth settings, also shares and retention (average % viewed) from YouTube Analytics |
 | TikTok, Instagram, Facebook, Threads, Pinterest, Vimeo, Dailymotion | Fetched on the same schedule with the credentials you set for uploading (see below). Missing credentials are named in the tracking notes |
 | X | Same, but only with `RB_VIDEO_X_STATS=true`: X bills each read |
-| Reddit, Bluesky, Tumblr, LinkedIn, Rumble, Snapchat, Twitch, other | Type them in on the project page, or import a CSV (admin **Performance** page or `redblue video import-stats file.csv`). Reddit, Bluesky and Tumblr don't report views; the others have no suitable API |
+| Reddit, Bluesky, Tumblr | Fetched on the same schedule, but these report no views: points/likes, comments and reposts are stored and shown on the project page ("no view count"), and the videos get no lift or engagement. Reddit uses `REDDIT_CLIENT_ID`/`REDDIT_CLIENT_SECRET`, Tumblr your Tumblr credentials (posts on `RB_VIDEO_TUMBLR_BLOG` only), Bluesky needs nothing (public posts) |
+| LinkedIn, Rumble, Snapchat, Twitch, other | Type them in on the project page, or import a CSV (admin **Performance** page or `redblue video import-stats file.csv`). These have no suitable API |
 
 **Automatic numbers from other platforms.** Each run reads your own recent posts (within
 `RB_VIDEO_TRACK_DAYS`, 30 by default) with read-only requests. The token needs a read
@@ -187,6 +188,9 @@ permission besides the upload one:
 | Vimeo | the upload token | plays (hidden on some plans), likes, comments |
 | Dailymotion | the upload key | views, likes |
 | X (opt-in) | `tweet.read` | impressions, likes, replies, reposts + quotes |
+| Reddit | the trend-research app credentials | points (score), comments, crossposts; no views |
+| Bluesky | none (public API) | likes, replies, reposts + quotes; no views |
+| Tumblr | the upload token | notes (likes + reblogs + replies together); no views |
 
 Instagram and Threads links are matched to your 200 most recent posts to find their ids,
 once per video. If a platform refuses, the notes after **Fetch stats now** (or in
