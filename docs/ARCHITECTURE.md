@@ -64,10 +64,10 @@ per-agent spend limits and logs cost. Every agent has a deterministic no-key fal
 
 ## Known gaps (v0.1)
 
-- Migrations (Alembic) cover every schema change, but there is one linear history in
-  `redblue-core` for all packages' tables, and only SQLite is exercised in CI. Postgres
-  upgrades take an advisory lock so several workers can start at once, but haven't been
-  run against a real Postgres here.
+- Migrations (Alembic) use one linear history in `redblue-core` for all packages' tables.
+  CI runs them on SQLite and Postgres 16. On Postgres, upgrades take an advisory lock so
+  several workers can start at once, and a failed upgrade rolls back completely. Other
+  databases (MySQL etc.) are untested.
 - Passkeys, Temporal-backed workflows, Search Console API sync (CSV import works), and
   Tailwind integration are not implemented yet; the base CSS is hand-written on design tokens.
 - The block editor is a validated JSON editor with preview; a visual block editor is planned.

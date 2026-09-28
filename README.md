@@ -143,7 +143,9 @@ redblue db check                      # exit 1 if a model changed without a migr
 
 Migrations live in `packages/core/redblue/core/migrations/versions/`. Autogenerate can't
 tell a rename from a drop plus an add, so edit renames and data moves by hand. The test
-suite fails if the models and migrations drift apart.
+suite fails if the models and migrations drift apart. CI also runs the migration tests on
+Postgres; locally, point `RB_TEST_POSTGRES_URL` at an empty database whose name contains
+"test" (it gets wiped) and run `pytest packages/core/tests/test_migrations_postgres.py`.
 
 Contributors and AI coding sessions: read [`CLAUDE.md`](CLAUDE.md) first.
 
