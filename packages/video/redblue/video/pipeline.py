@@ -286,11 +286,15 @@ class Pipeline:
     # ------------------------------------------------------------------ 7. performance
 
     def track(self, db: Session) -> performance.TrackResult:
-        """Snapshot stats for published videos and check pending TikTok/Instagram uploads.
+        """Snapshot stats for published videos (YouTube and every configured platform) and
+        check pending uploads.
         Read-only: nothing is ever posted or published from here."""
-        from redblue.video.upload_social import refresh_pending  # avoids an import cycle
+        from redblue.video import stats  # avoids an import cycle
+        from redblue.video.upload_social import refresh_pending
 
         res = performance.track(db, self.s, self.http)
+        more = stats.track(db, self.s, self.http)
+        res.updated, res.notes = res.updated + more.updated, res.notes + more.notes
         res.notes += refresh_pending(db, self.s, self.http)
         return res
 

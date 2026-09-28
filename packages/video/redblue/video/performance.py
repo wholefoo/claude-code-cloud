@@ -1,5 +1,5 @@
 """Performance tracking: record where a human published each video, collect its numbers
-(YouTube APIs, CSV exports, or typed in), compare videos fairly, and learn which trend
+(platform APIs, CSV exports, or typed in), compare videos fairly, and learn which trend
 sources and topics do well for *you* so the next sweep ranks them accordingly.
 
 Comparisons are made at the same age (views at ``perf_window_hours``, interpolated between
@@ -187,7 +187,7 @@ class TrackResult:
 
 
 def track(db: Session, s: VideoSettings, http: httpx.Client | None = None) -> TrackResult:
-    """Snapshot stats for recent YouTube publications (other platforms: CSV or by hand)."""
+    """Snapshot stats for recent YouTube publications (other platforms: :mod:`.stats`)."""
     res = TrackResult()
     since = utcnow() - timedelta(days=s.track_days)
     pubs = list(
