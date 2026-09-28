@@ -4,8 +4,6 @@ app: redblue.platform.app:app
 severity_threshold: high
 paths: [packages, admin]
 exclude: ["examples/*", "**/tests/*", "evals/*"]
-scanners:
-  pip_audit: false
 spend_limit_usd: 1.0
 probe_paths: ["/", "/search", "/sitemap.xml", "/robots.txt", "/llms.txt"]
 ignore:
