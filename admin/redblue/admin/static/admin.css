@@ -36,7 +36,7 @@ select,.rb-admin input,.rb-admin textarea{font:inherit;padding:.4rem .5rem;borde
 .rb-media-grid img{aspect-ratio:4/3;object-fit:cover;width:100%;border-radius:6px}
 .rb-revisions{padding-left:1.2rem;font-size:.9rem}
 .rb-login{margin:4rem auto}
-@media (max-width:60rem){.rb-admin__layout,.rb-editor{grid-template-columns:1fr}.rb-admin__nav{border-right:0;border-bottom:1px solid var(--rb-border)}.rb-admin__nav ul{display:flex;flex-wrap:wrap}}
+@media (max-width:60rem){.rb-admin__layout,.rb-editor{grid-template-columns:minmax(0,1fr)}.rb-admin__nav{border-right:0;border-bottom:1px solid var(--rb-border)}.rb-admin__nav ul{display:flex;flex-wrap:wrap}}
 .rb-renders{display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-start}
 .rb-renders figure{margin:0}
 .rb-renders video{background:#000;border-radius:8px;max-width:100%}
@@ -44,3 +44,4 @@ select,.rb-admin input,.rb-admin textarea{font:inherit;padding:.4rem .5rem;borde
 .rb-upload>summary{cursor:pointer;list-style-position:inside}
 .rb-upload>summary h2{display:inline;margin:0;font-size:1.2rem}
 .rb-upload[open]>summary{margin-bottom:1rem}
+@media (max-width:60rem){.rb-table{display:block;position:relative;max-width:100%;overflow-x:auto}}

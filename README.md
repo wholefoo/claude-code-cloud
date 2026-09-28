@@ -117,6 +117,18 @@ ruff check .
 redblue gate scan --path .   # the project dogfoods its own gate
 ```
 
+Admin pages in a real browser (skipped by plain `pytest` unless Chromium is available):
+
+```bash
+pip install playwright && python -m playwright install chromium
+RB_SCREENSHOT_DIR=screenshots pytest packages/platform/tests/test_admin_screens.py
+```
+
+It opens every admin page at desktop and phone widths and fails on server errors, console
+or CSP errors, pages wider than the screen, and broken upload cards. It saves a full-page
+screenshot of each page. CI runs it on every pull request and keeps the screenshots as the
+`admin-screenshots` artifact.
+
 Contributors and AI coding sessions: read [`CLAUDE.md`](CLAUDE.md) first.
 
 ## License
