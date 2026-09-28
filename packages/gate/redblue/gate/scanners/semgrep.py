@@ -13,6 +13,30 @@ SEVERITY = {"ERROR": Severity.high, "WARNING": Severity.medium, "INFO": Severity
 CONFIGS = ("p/python", "p/owasp-top-ten")
 
 
+def _coverage(data: dict) -> str:
+    """One line on what semgrep covered. Jinja templates are only partly parsed as HTML
+    (the ``{% %}``/``{{ }}`` regions are skipped, the rest is still checked), so those
+    warnings are counted apart from files or rules that could not be analyzed at all."""
+    scanned = len((data.get("paths") or {}).get("scanned") or [])
+    partial: set[str] = set()
+    failed = 0
+    for err in data.get("errors") or []:
+        kind = err.get("type")
+        if isinstance(kind, list) and kind and kind[0] == "PartialParsing":
+            spans = kind[1] if len(kind) > 1 and isinstance(kind[1], list) else []
+            partial.update(str(s.get("path")) for s in spans if isinstance(s, dict))
+            partial.add(str(err.get("path") or ""))
+            partial.discard("")
+        else:
+            failed += 1
+    line = f"semgrep: {scanned} file(s) scanned"
+    if partial:
+        line += f", {len(partial)} only partly parsed (e.g. template syntax)"
+    if failed:
+        line += f", {failed} error(s): some files or rules were not analyzed"
+    return line
+
+
 class SemgrepScanner:
     name = "semgrep"
     kind = "sast"
@@ -36,12 +60,7 @@ class SemgrepScanner:
             ) from exc
         if proc.returncode not in (0, 1) and not data.get("results"):
             raise ScannerUnavailable(f"semgrep failed: {(proc.stderr or '')[-300:]}")
-        scanned = len((data.get("paths") or {}).get("scanned") or [])
-        errors = len(data.get("errors") or [])
-        ctx.notes.append(
-            f"semgrep: {scanned} file(s) scanned"
-            + (f", {errors} file(s) or rule(s) could not be analyzed" if errors else "")
-        )
+        ctx.notes.append(_coverage(data))
         out = []
         for r in data.get("results", []):
             extra = r.get("extra", {})
