@@ -31,5 +31,7 @@ in `docs/PLAN.md`. Read it before any large change.
   `gate` depends on nothing but pydantic/pyyaml/httpx so it can run standalone in the Action.
 - Services come from `request.app.state.rb` (`redblue.core.context.Platform`).
 - Agents must work without an API key: provide a deterministic fallback.
+- Schema changes need a migration: change the model, run `redblue db revision -m "..."`,
+  review the file (renames and data moves by hand), commit it with the model change.
 - Tests live in `<package>/tests/`. Run everything with `pytest`; lint with `ruff check .`.
 - Install for development: `make dev`.

@@ -13,8 +13,3 @@ ignore:
     reason: >-
       builder/scaffold.py renders Python, YAML and Markdown project files, not HTML;
       autoescaping would corrupt generated code. Inputs are the validated BuildPlan.
-  - fingerprint: 303c939397b24525
-    reason: >-
-      core/db.py add_missing_columns() runs ALTER TABLE ADD COLUMN; DDL identifiers can't be
-      bound parameters. Table/column names and types come from our own model metadata (never
-      user input), are validated against strict patterns and quoted by the dialect.

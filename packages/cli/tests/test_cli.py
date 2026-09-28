@@ -34,3 +34,15 @@ def test_gate_passthrough(tmp_path):
     (tmp_path / "ok.py").write_text("x = 1\n")
     r = runner.invoke(app, ["gate", "scan", "--path", str(tmp_path), "--no-ai"])
     assert r.exit_code == 0 and "Gate passed" in r.output
+
+
+def test_db_commands(tmp_path, monkeypatch):
+    monkeypatch.setenv("RB_DATABASE_URL", f"sqlite:///{tmp_path}/cli.db")
+    runner = CliRunner()
+    assert "unversioned" in runner.invoke(app, ["db", "current"]).output
+    r = runner.invoke(app, ["db", "upgrade"])
+    assert r.exit_code == 0 and "0001_baseline (was unversioned)" in r.output
+    r = runner.invoke(app, ["db", "check"])
+    assert r.exit_code == 0 and "Models and migrations match." in r.output
+    r = runner.invoke(app, ["db", "revision", "-m", "nothing"])
+    assert r.exit_code == 0 and "No model changes" in r.output
