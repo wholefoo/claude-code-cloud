@@ -85,7 +85,7 @@ def back(path: str, msg: str = "") -> RedirectResponse:
     path, _, fragment = path.partition("#")
     sep = "&" if "?" in path else "?"
     url = path + (f"{sep}msg={quote(msg)}" if msg else "") + (f"#{fragment}" if fragment else "")
-    return RedirectResponse(url, status_code=303)
+    return RedirectResponse(safe_redirect_target(url, "/admin"), status_code=303)
 
 
 def _lines(text: str) -> list[str]:
