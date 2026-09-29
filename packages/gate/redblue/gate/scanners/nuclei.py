@@ -9,6 +9,10 @@ from redblue.gate.scanners import ScanContext, ScannerUnavailable, find_tool, ru
 from redblue.gate.schemas import Finding, Severity
 
 
+def available() -> bool:
+    return find_tool("nuclei") is not None
+
+
 class NucleiScanner:
     name = "nuclei"
     kind = "dast"
@@ -28,6 +32,7 @@ class NucleiScanner:
                 "-jsonl",
                 "-silent",
                 "-disable-update-check",
+                "-no-interactsh",  # no out-of-band callbacks to public servers
                 "-severity",
                 "low,medium,high,critical",
             ],

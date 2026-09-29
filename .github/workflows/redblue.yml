@@ -17,3 +17,4 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           config: .redblue.yml
           install: make dev  # the monorepo's packages, so the preview app can start
+          dast_tools: "true"  # ZAP and Nuclei against the preview too

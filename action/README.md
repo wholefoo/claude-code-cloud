@@ -73,4 +73,5 @@ and set `seed_command: python -m myapp.seed` in `.redblue.yml`.
 | `open_fix_prs` | `true` | Open PRs for verified fixes |
 | `upload_sarif` | `true` | Upload to code scanning |
 | `install` | (none) | Command that installs your app for the preview, e.g. `make dev`. Without it: `requirements.txt` or the root `pyproject.toml`; if the app still can't be imported, preview and DAST are skipped (the report says so) |
+| `dast_tools` | `false` | Also run OWASP ZAP (baseline, pinned Docker image) and Nuclei (pinned release and templates) against the preview, which then runs as a server on 127.0.0.1. Linux x64 with Docker; adds about 2–3 minutes. ZAP runs on the host network and its own API listens on all interfaces without a key for the length of the scan, so on a self-hosted runner, make sure the runner accepts no inbound connections |
 | `python_version` | `3.12` | Python for the app under test |
