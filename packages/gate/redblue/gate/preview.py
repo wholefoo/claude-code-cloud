@@ -100,6 +100,7 @@ class Preview:
         self._base_url: str | None = None
         self._client: httpx.Client | None = None
         self._proc: subprocess.Popen | None = None
+        self._log: Any = None
         self._tmp: tempfile.TemporaryDirectory | None = None
         self._saved_env: dict[str, str | None] = {}
         self._saved_modules: set[str] = set()
@@ -254,11 +255,16 @@ class Preview:
             ]
         base = f"http://127.0.0.1:{port}"
         self._set_base_url(base)
+        # Output goes to a file: a pipe nobody reads fills up during a long scan (ZAP,
+        # Nuclei) and blocks the server.
+        if self._tmp is None:
+            raise PreviewError("Preview temp directory missing")
+        self._log = (Path(self._tmp.name) / "server.log").open("w+", errors="replace")
         self._proc = subprocess.Popen(  # noqa: S603 - command from the repo owner's config
             cmd,
             cwd=self.app_dir,
             env=self._child_env(),
-            stdout=subprocess.PIPE,
+            stdout=self._log,
             stderr=subprocess.STDOUT,
             text=True,
         )
@@ -272,7 +278,8 @@ class Preview:
         deadline = time.monotonic() + self.startup_timeout
         while time.monotonic() < deadline:
             if self._proc.poll() is not None:
-                out = self._proc.stdout.read() if self._proc.stdout else ""
+                self._log.seek(0)
+                out = self._log.read()
                 raise PreviewError(
                     f"Preview exited early ({self._proc.returncode}):\n{out[-2000:]}"
                 )
@@ -299,9 +306,10 @@ class Preview:
                 self._proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 self._proc.kill()
-            if self._proc.stdout:
-                self._proc.stdout.close()
             self._proc = None
+        if self._log is not None:
+            self._log.close()
+            self._log = None
         for key, old in self._saved_env.items():
             if old is None:
                 os.environ.pop(key, None)

@@ -71,5 +71,6 @@ per-agent spend limits and logs cost. Every agent has a deterministic no-key fal
 - Passkeys, Temporal-backed workflows, Search Console API sync (CSV import works), and
   Tailwind integration are not implemented yet; the base CSS is hand-written on design tokens.
 - The block editor is a validated JSON editor with preview; a visual block editor is planned.
-- Built-in DAST runs passive checks plus inert canaries; deeper active testing relies on
-  ZAP/Nuclei being installed in CI.
+- Built-in DAST runs passive checks plus inert canaries. ZAP (baseline) and Nuclei run too
+  when installed; the gate Action installs pinned versions with `dast_tools: "true"`, which
+  RedBlue's own gate uses.

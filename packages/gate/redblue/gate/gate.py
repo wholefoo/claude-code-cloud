@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import ExitStack
 from pathlib import Path
 
 from redblue.gate.blue import BlueAgent
@@ -9,6 +10,7 @@ from redblue.gate.config import GateConfig
 from redblue.gate.llm import LLM
 from redblue.gate.preview import Preview, PreviewError
 from redblue.gate.red import RedAgent, changed_files
+from redblue.gate.scanners import nuclei, zap
 from redblue.gate.schemas import (
     GateDecision,
     PreviewInfo,
@@ -30,6 +32,25 @@ def decide(report: ScanReport, threshold: Severity) -> GateDecision:
     )
 
 
+def _wants_server(config: GateConfig) -> bool:
+    """ZAP and Nuclei probe over real HTTP, so when either can run, an ``auto`` preview is
+    started as a loopback server instead of in-process."""
+    if config.preview_mode != "auto" or config.start_command or not config.app:
+        return False
+    return (config.scanners.enabled("zap") and zap.available()) or (
+        config.scanners.enabled("nuclei") and nuclei.available()
+    )
+
+
+def _open_preview(stack: ExitStack, config: GateConfig, repo: Path, notes: list[str]) -> Preview:
+    if _wants_server(config):
+        try:
+            return stack.enter_context(Preview(config, repo, mode="subprocess"))
+        except PreviewError as exc:
+            notes.append(f"Preview server failed, using in-process preview (no ZAP/Nuclei): {exc}")
+    return stack.enter_context(Preview(config, repo))
+
+
 def run_gate(
     config: GateConfig,
     repo_path: str | Path = ".",
@@ -48,7 +69,8 @@ def run_gate(
     preview_needed = config.app is not None or config.start_command is not None
     if preview_needed and any(config.scanners.enabled(n) for n in ("dast", "zap", "nuclei")):
         try:
-            with Preview(config, repo) as preview:
+            with ExitStack() as stack:
+                preview = _open_preview(stack, config, repo, report.notes)
                 report.preview = PreviewInfo(**preview.info())
                 red.scan(report, preview, changed, only)
         except PreviewError as exc:

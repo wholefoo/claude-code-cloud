@@ -38,6 +38,15 @@ inputs:
       imported, the preview and DAST are skipped and the report says so.
     required: false
     default: ""
+  dast_tools:
+    description: >-
+      Also run OWASP ZAP (baseline scan, from a pinned Docker image) and Nuclei (pinned
+      release and templates) against the preview. The preview then runs as a server on
+      127.0.0.1. Linux x64 runners with Docker only; adds a few minutes per run. ZAP uses
+      the host network and its own API listens without a key during the scan, so use it
+      on self-hosted runners only if they accept no inbound connections.
+    required: false
+    default: "false"
   python_version:
     description: Python version used to run the app under test.
     required: false
@@ -62,6 +71,28 @@ runs:
         python -m pip install "${{ github.action_path }}/../packages/gate[ai,scanners]"
         if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
         if [ -f pyproject.toml ]; then python -m pip install -e . || true; fi
+
+    - name: Install ZAP and Nuclei
+      if: inputs.dast_tools == 'true' && runner.os == 'Linux' && runner.arch == 'X64'
+      shell: bash
+      env:
+        NUCLEI_VERSION: "3.11.1"
+        NUCLEI_SHA256: ea63d4ae232808cd7c6bc00d0142428e231fab59dae01042246097d195835ab6
+        NUCLEI_TEMPLATES: v10.4.9
+        ZAP_IMAGE: zaproxy/zap-stable:2.17.0@sha256:781a2bdaea47324e7bab583e2263f21d257b0aee61ed51521a5be45f5f5081ef
+      run: |
+        set -euo pipefail
+        bin="$RUNNER_TEMP/redblue-bin"
+        mkdir -p "$bin"
+        zip="$RUNNER_TEMP/nuclei.zip"
+        curl -sSfL -o "$zip" "https://github.com/projectdiscovery/nuclei/releases/download/v${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION}_linux_amd64.zip"
+        echo "${NUCLEI_SHA256}  $zip" | sha256sum -c -
+        unzip -o -q "$zip" nuclei -d "$bin"
+        git clone -q --depth 1 --branch "$NUCLEI_TEMPLATES" \
+          https://github.com/projectdiscovery/nuclei-templates.git "$HOME/nuclei-templates"
+        echo "$bin" >> "$GITHUB_PATH"
+        docker pull -q "$ZAP_IMAGE"
+        echo "REDBLUE_ZAP_IMAGE=$ZAP_IMAGE" >> "$GITHUB_ENV"
 
     - name: Install the app
       if: inputs.install != ''
